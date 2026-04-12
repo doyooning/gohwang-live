@@ -1,22 +1,16 @@
-import { ScoreHeader } from "@/components/match/score-header"
-import { VideoPlayer } from "@/components/match/video-player"
-import { MatchTabs } from "@/components/match/match-tabs"
+import { MatchList } from "@/components/match/match-list"
 
-export default function MatchPage() {
+export default function HomePage() {
   return (
     <div className="min-h-screen bg-background">
-      <ScoreHeader
-        homeTeam="FC 서울드림"
-        awayTeam="인천 유나이티드"
-        homeScore={3}
-        awayScore={1}
-        matchTime="85'"
-        status="live"
-      />
-      
-      <main>
-        <VideoPlayer videoId="dQw4w9WgXcQ" />
-        <MatchTabs />
+      <header className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b border-border">
+        <div className="px-4 py-3">
+          <h1 className="text-lg font-bold text-foreground">경기 목록</h1>
+        </div>
+      </header>
+
+      <main className="px-4 py-4">
+        <MatchList />
       </main>
     </div>
   )
