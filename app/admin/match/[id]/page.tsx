@@ -22,6 +22,7 @@ import {
   Pause,
   X,
   Clock,
+  Users,
 } from "lucide-react"
 
 // Types
@@ -216,6 +217,13 @@ export default function MatchControlPage() {
         <div className="px-3 py-2 flex items-center justify-between border-b border-border">
           <Button variant="ghost" size="icon" onClick={() => router.push("/admin")}>
             <ArrowLeft className="size-5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.push(`/admin/match/${params.id}/lineup`)}
+          >
+            <Users className="size-5" />
           </Button>
           <Badge className="bg-destructive text-destructive-foreground">
             <span className="relative flex size-2 mr-1.5">
