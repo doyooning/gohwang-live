@@ -20,7 +20,7 @@ const matchData: Record<string, {
     awayScore: 1,
     matchTime: "85'",
     status: "live",
-    videoId: "dQw4w9WgXcQ",
+    videoId: "fpzcH5DhRXU",
   },
   "2": {
     homeTeam: "수원 삼성 블루윙즈",
@@ -29,7 +29,7 @@ const matchData: Record<string, {
     awayScore: 2,
     matchTime: "67'",
     status: "live",
-    videoId: "dQw4w9WgXcQ",
+    videoId: "fpzcH5DhRXU",
   },
 }
 

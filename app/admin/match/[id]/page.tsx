@@ -13,16 +13,16 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
 import {
   ArrowLeft,
   Goal,
   Square,
   RefreshCw,
-  Play,
-  Pause,
   X,
   Clock,
   Users,
+  Image as ImageIcon,
 } from "lucide-react"
 
 // Types
@@ -35,6 +35,7 @@ interface MatchEvent {
   minute: number
   playerName: string
   playerOutName?: string
+  assistPlayerName?: string
 }
 
 interface Player {
@@ -52,6 +53,7 @@ const MATCH_DATA = {
   awayScore: 1,
   status: "live" as const,
   currentTime: 67,
+  thumbnailUrl: "/images/match-thumbnail.jpg",
 }
 
 const HOME_PLAYERS: Player[] = [
@@ -83,9 +85,9 @@ const AWAY_PLAYERS: Player[] = [
 ]
 
 const INITIAL_EVENTS: MatchEvent[] = [
-  { id: "e1", type: "goal", team: "home", minute: 23, playerName: "한동훈" },
+  { id: "e1", type: "goal", team: "home", minute: 23, playerName: "한동훈", assistPlayerName: "오승환" },
   { id: "e2", type: "yellow", team: "away", minute: 35, playerName: "황인범" },
-  { id: "e3", type: "goal", team: "away", minute: 41, playerName: "손흥민" },
+  { id: "e3", type: "goal", team: "away", minute: 41, playerName: "손흥민", assistPlayerName: "이강인" },
   { id: "e4", type: "goal", team: "home", minute: 58, playerName: "오승환" },
 ]
 
@@ -95,27 +97,19 @@ export default function MatchControlPage() {
   const params = useParams()
 
   const [matchTime, setMatchTime] = useState(MATCH_DATA.currentTime)
-  const [isRunning, setIsRunning] = useState(true)
   const [homeScore, setHomeScore] = useState(MATCH_DATA.homeScore)
   const [awayScore, setAwayScore] = useState(MATCH_DATA.awayScore)
   const [events, setEvents] = useState<MatchEvent[]>(INITIAL_EVENTS)
+  const [showThumbnail, setShowThumbnail] = useState(false)
 
   // Input panel state
   const [activePanel, setActivePanel] = useState<EventType | null>(null)
   const [selectedTeam, setSelectedTeam] = useState<"home" | "away" | "">("")
   const [selectedPlayer, setSelectedPlayer] = useState("")
   const [selectedPlayerOut, setSelectedPlayerOut] = useState("")
+  const [selectedAssistPlayer, setSelectedAssistPlayer] = useState("")
   const [cardType, setCardType] = useState<"yellow" | "red">("yellow")
   const [inputMinute, setInputMinute] = useState("")
-
-  // Match clock
-  useEffect(() => {
-    if (!isRunning) return
-    const interval = setInterval(() => {
-      setMatchTime((prev) => (prev < 90 ? prev + 1 : prev))
-    }, 60000) // 1 minute real time = 1 minute match time for demo
-    return () => clearInterval(interval)
-  }, [isRunning])
 
   // Auth guard
   useEffect(() => {
@@ -137,6 +131,7 @@ export default function MatchControlPage() {
     setSelectedTeam("")
     setSelectedPlayer("")
     setSelectedPlayerOut("")
+    setSelectedAssistPlayer("")
     setCardType("yellow")
     setInputMinute("")
     setActivePanel(null)
@@ -163,6 +158,14 @@ export default function MatchControlPage() {
       const playerOut = players.find((p) => p.id === selectedPlayerOut)
       if (playerOut) {
         newEvent.playerOutName = playerOut.name
+      }
+    }
+
+    // Add assist player for goals
+    if (activePanel === "goal" && selectedAssistPlayer) {
+      const assistPlayer = players.find((p) => p.id === selectedAssistPlayer)
+      if (assistPlayer) {
+        newEvent.assistPlayerName = assistPlayer.name
       }
     }
 
@@ -195,7 +198,9 @@ export default function MatchControlPage() {
   const getEventLabel = (event: MatchEvent) => {
     switch (event.type) {
       case "goal":
-        return `${event.playerName} 득점`
+        return event.assistPlayerName 
+          ? `${event.playerName} 득점 (어시스트: ${event.assistPlayerName})`
+          : `${event.playerName} 득점`
       case "yellow":
         return `${event.playerName} 경고`
       case "red":
@@ -215,16 +220,18 @@ export default function MatchControlPage() {
       <header className="sticky top-0 z-50 bg-card border-b border-border">
         {/* Top bar */}
         <div className="px-3 py-2 flex items-center justify-between border-b border-border">
-          <Button variant="ghost" size="icon" onClick={() => router.push("/admin")}>
-            <ArrowLeft className="size-5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => router.push(`/admin/match/${params.id}/lineup`)}
-          >
-            <Users className="size-5" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon" onClick={() => router.push("/admin")}>
+              <ArrowLeft className="size-5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => router.push(`/admin/match/${params.id}/lineup`)}
+            >
+              <Users className="size-5" />
+            </Button>
+          </div>
           <Badge className="bg-destructive text-destructive-foreground">
             <span className="relative flex size-2 mr-1.5">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive-foreground opacity-75" />
@@ -232,14 +239,23 @@ export default function MatchControlPage() {
             </span>
             LIVE
           </Badge>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setIsRunning((prev) => !prev)}
-          >
-            {isRunning ? <Pause className="size-5" /> : <Play className="size-5" />}
-          </Button>
+          <div className="flex items-center gap-2">
+            <ImageIcon className="size-4 text-muted-foreground" />
+            <Switch
+              checked={showThumbnail}
+              onCheckedChange={setShowThumbnail}
+            />
+          </div>
         </div>
+
+        {/* Thumbnail overlay indicator */}
+        {showThumbnail && (
+          <div className="px-4 py-2 bg-accent/20 border-b border-border">
+            <p className="text-xs text-accent text-center font-medium">
+              썸네일 오버레이 활성화 - 시청자에게 대기 화면이 표시됩니다
+            </p>
+          </div>
+        )}
 
         {/* Score display */}
         <div className="px-4 py-3">
@@ -333,6 +349,7 @@ export default function MatchControlPage() {
                   setSelectedTeam("home")
                   setSelectedPlayer("")
                   setSelectedPlayerOut("")
+                  setSelectedAssistPlayer("")
                 }}
               >
                 {MATCH_DATA.homeTeam}
@@ -344,6 +361,7 @@ export default function MatchControlPage() {
                   setSelectedTeam("away")
                   setSelectedPlayer("")
                   setSelectedPlayerOut("")
+                  setSelectedAssistPlayer("")
                 }}
               >
                 {MATCH_DATA.awayTeam}
@@ -379,7 +397,11 @@ export default function MatchControlPage() {
                   <SelectTrigger className="w-full h-12">
                     <SelectValue
                       placeholder={
-                        activePanel === "substitution" ? "교체 IN 선수 선택" : "선수 선택"
+                        activePanel === "goal" 
+                          ? "득점 선수 선택" 
+                          : activePanel === "substitution" 
+                            ? "교체 IN 선수 선택" 
+                            : "선수 선택"
                       }
                     />
                   </SelectTrigger>
@@ -391,6 +413,25 @@ export default function MatchControlPage() {
                     ))}
                   </SelectContent>
                 </Select>
+
+                {/* Assist Player Select (for goals) */}
+                {activePanel === "goal" && (
+                  <Select value={selectedAssistPlayer} onValueChange={setSelectedAssistPlayer}>
+                    <SelectTrigger className="w-full h-12">
+                      <SelectValue placeholder="어시스트 선수 선택 (선택사항)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">없음</SelectItem>
+                      {getPlayers(selectedTeam as "home" | "away")
+                        .filter((p) => p.id !== selectedPlayer)
+                        .map((player) => (
+                          <SelectItem key={player.id} value={player.id}>
+                            #{player.number} {player.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                )}
 
                 {/* Player Out Select (for substitution) */}
                 {activePanel === "substitution" && (

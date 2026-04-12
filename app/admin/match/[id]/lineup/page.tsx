@@ -20,10 +20,20 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { ArrowLeft, Plus, Trash2, Save, Users } from "lucide-react"
 
 // Types
 type Position = "GK" | "DF" | "MF" | "FW"
+type Formation = "4-3-3" | "4-2-3-1" | "3-4-3"
 
 interface Player {
   id: string
@@ -44,6 +54,8 @@ const MATCH_DATA = {
   homeTeam: "FC 서울 유스",
   awayTeam: "수원 삼성 유스",
 }
+
+const FORMATIONS: Formation[] = ["4-3-3", "4-2-3-1", "3-4-3"]
 
 const INITIAL_LINEUP: TeamLineup = {
   home: [
@@ -93,8 +105,17 @@ export default function LineupManagementPage() {
 
   const [activeTeam, setActiveTeam] = useState<"home" | "away">("home")
   const [lineup, setLineup] = useState<TeamLineup>(INITIAL_LINEUP)
+  const [formations, setFormations] = useState<{ home: Formation; away: Formation }>({
+    home: "4-3-3",
+    away: "4-3-3",
+  })
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [isFormationSelectOpen, setIsFormationSelectOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+
+  // Alert dialog state
+  const [alertOpen, setAlertOpen] = useState(false)
+  const [alertMessage, setAlertMessage] = useState("")
 
   // New player form state
   const [newPlayerName, setNewPlayerName] = useState("")
@@ -126,6 +147,34 @@ export default function LineupManagementPage() {
       case "FW":
         return "bg-red-500/20 text-red-400"
     }
+  }
+
+  const validateLineup = (players: Player[]): { valid: boolean; message: string } => {
+    const starterPlayers = players.filter((p) => p.isStarter)
+    const gkCount = starterPlayers.filter((p) => p.position === "GK").length
+
+    if (starterPlayers.length !== 11) {
+      return {
+        valid: false,
+        message: `선발 명단은 반드시 11명이어야 합니다. (현재: ${starterPlayers.length}명)`,
+      }
+    }
+
+    if (gkCount === 0) {
+      return {
+        valid: false,
+        message: "선발 명단에 골키퍼가 반드시 1명 포함되어야 합니다. (현재: 0명)",
+      }
+    }
+
+    if (gkCount > 1) {
+      return {
+        valid: false,
+        message: `선발 명단에 골키퍼는 1명만 포함될 수 있습니다. (현재: ${gkCount}명)`,
+      }
+    }
+
+    return { valid: true, message: "" }
   }
 
   const handleToggleStarter = (playerId: string) => {
@@ -171,31 +220,37 @@ export default function LineupManagementPage() {
   }
 
   const handleSaveLineup = async () => {
+    // Validate both teams
+    const homeValidation = validateLineup(lineup.home)
+    const awayValidation = validateLineup(lineup.away)
+
+    if (!homeValidation.valid) {
+      setAlertMessage(`[홈팀] ${homeValidation.message}`)
+      setAlertOpen(true)
+      return
+    }
+
+    if (!awayValidation.valid) {
+      setAlertMessage(`[원정팀] ${awayValidation.message}`)
+      setAlertOpen(true)
+      return
+    }
+
     setIsSaving(true)
     // Simulate API call
     await new Promise((resolve) => setTimeout(resolve, 1000))
     setIsSaving(false)
-    // Show success feedback (in real app, use toast)
-    alert("라인업이 저장되었습니다.")
+    // Show success feedback
+    setAlertMessage("라인업이 저장되었습니다.")
+    setAlertOpen(true)
   }
 
-  // Formation summary
-  const getFormationSummary = (players: Player[]) => {
-    const startersByPosition = players
-      .filter((p) => p.isStarter)
-      .reduce(
-        (acc, p) => {
-          acc[p.position] = (acc[p.position] || 0) + 1
-          return acc
-        },
-        {} as Record<Position, number>
-      )
-
-    const df = startersByPosition["DF"] || 0
-    const mf = startersByPosition["MF"] || 0
-    const fw = startersByPosition["FW"] || 0
-
-    return `${df}-${mf}-${fw}`
+  const handleFormationChange = (formation: Formation) => {
+    setFormations((prev) => ({
+      ...prev,
+      [activeTeam]: formation,
+    }))
+    setIsFormationSelectOpen(false)
   }
 
   if (!user || user.role !== "operator") {
@@ -257,7 +312,7 @@ export default function LineupManagementPage() {
         </div>
       </div>
 
-      {/* Formation Summary */}
+      {/* Formation Summary - Clickable */}
       <div className="px-4 py-3 bg-card border-b border-border">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -265,9 +320,15 @@ export default function LineupManagementPage() {
             <span className="text-sm text-muted-foreground">포메이션</span>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-lg font-bold text-primary">
-              {getFormationSummary(currentPlayers)}
-            </span>
+            <Button
+              variant="outline"
+              className="h-9 px-4 gap-2"
+              onClick={() => setIsFormationSelectOpen(true)}
+            >
+              <span className="text-lg font-bold text-primary">
+                {formations[activeTeam]}
+              </span>
+            </Button>
             <span className="text-sm text-muted-foreground">
               ({starters.length}/11명)
             </span>
@@ -283,6 +344,11 @@ export default function LineupManagementPage() {
             <h2 className="text-sm font-semibold text-foreground">
               선발 명단 ({starters.length}명)
             </h2>
+            {starters.length !== 11 && (
+              <span className="text-xs text-destructive font-medium">
+                11명이어야 합니다
+              </span>
+            )}
           </div>
           <div className="space-y-2">
             {starters.length === 0 ? (
@@ -340,6 +406,27 @@ export default function LineupManagementPage() {
           선수 추가
         </Button>
       </div>
+
+      {/* Formation Select Dialog */}
+      <Dialog open={isFormationSelectOpen} onOpenChange={setIsFormationSelectOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>포메이션 선택</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 py-4">
+            {FORMATIONS.map((formation) => (
+              <Button
+                key={formation}
+                variant={formations[activeTeam] === formation ? "default" : "outline"}
+                className="w-full h-14 text-xl font-bold"
+                onClick={() => handleFormationChange(formation)}
+              >
+                {formation}
+              </Button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Add Player Dialog */}
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -408,6 +495,21 @@ export default function LineupManagementPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Alert Dialog for validation/success messages */}
+      <AlertDialog open={alertOpen} onOpenChange={setAlertOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {alertMessage.includes("저장되었습니다") ? "저장 완료" : "라인업 오류"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>{alertMessage}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction>확인</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
