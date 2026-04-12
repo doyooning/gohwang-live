@@ -168,7 +168,11 @@ export default function AdminPage() {
                         <Pause className="size-3" />
                         일시정지
                       </Button>
-                      <Button size="sm" className="h-8 gap-1">
+                      <Button
+                        size="sm"
+                        className="h-8 gap-1"
+                        onClick={() => router.push(`/admin/match/${match.id}`)}
+                      >
                         <Settings className="size-3" />
                         관리
                       </Button>
