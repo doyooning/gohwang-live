@@ -67,7 +67,7 @@ export default async function MatchPage({
 
       <main>
         <VideoPlayer videoId={match.videoId} />
-        <MatchTabs />
+        <MatchTabs videoId={match.videoId} />
       </main>
     </div>
   )

@@ -5,7 +5,11 @@ import { ChatTab } from "./chat-tab"
 import { MatchInfoTab } from "./match-info-tab"
 import { LineupTab } from "./lineup-tab"
 
-export function MatchTabs() {
+interface MatchTabsProps {
+  videoId?: string
+}
+
+export function MatchTabs({ videoId }: MatchTabsProps) {
   return (
     <Tabs defaultValue="info" className="w-full">
       <TabsList className="w-full grid grid-cols-3 bg-card border-b border-border rounded-none h-12">
@@ -30,7 +34,7 @@ export function MatchTabs() {
       </TabsList>
       
       <TabsContent value="chat" className="mt-0">
-        <ChatTab />
+        <ChatTab videoId={videoId} />
       </TabsContent>
       
       <TabsContent value="info" className="mt-0">
