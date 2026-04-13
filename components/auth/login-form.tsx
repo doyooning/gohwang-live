@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, type FormEvent } from "react"
-import Link from "next/link"
 import { Mail, Lock, Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -117,20 +116,7 @@ export function LoginForm() {
         </Button>
       </FieldGroup>
 
-      <div className="flex items-center justify-between mt-4 text-sm">
-        <Link
-          href="/signup"
-          className="text-muted-foreground hover:text-primary transition-colors"
-        >
-          회원가입
-        </Link>
-        <Link
-          href="/forgot-password"
-          className="text-muted-foreground hover:text-primary transition-colors"
-        >
-          비밀번호 찾기
-        </Link>
-      </div>
+      
     </form>
   )
 }

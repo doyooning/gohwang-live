@@ -17,7 +17,7 @@ export default function LandingPage() {
             <span className="font-bold text-lg text-foreground">KICK LIVE</span>
           </div>
           <Link href="/login">
-            <Button size="sm">로그인</Button>
+            <Button size="sm" variant="outline">운영자 로그인</Button>
           </Link>
         </div>
       </header>
