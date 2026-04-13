@@ -68,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (mockUser.user.role === "operator") {
       router.push("/admin")
     } else {
-      router.push("/")
+      router.push("/match")
     }
 
     return { success: true }
