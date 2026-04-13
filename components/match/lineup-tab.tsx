@@ -114,7 +114,7 @@ function TeamSection({ lineup, isAway }: { lineup: TeamLineup; isAway?: boolean 
 
 export function LineupTab() {
   return (
-    <ScrollArea className="h-[calc(100vh-280px)] min-h-[300px]">
+    <ScrollArea className="h-full">
       <div className="flex">
         <TeamSection lineup={homeLineup} />
         <TeamSection lineup={awayLineup} isAway />

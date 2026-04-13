@@ -42,33 +42,45 @@ export default async function MatchPage({
   const match = matchData[id] || matchData["1"]
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="sticky top-0 z-50 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 border-b border-border">
-        <div className="flex items-center gap-2 px-2 py-2">
-          <Link
-            href="/"
-            className="p-2 rounded-full hover:bg-secondary transition-colors"
-            aria-label="뒤로 가기"
-          >
-            <ChevronLeft className="w-5 h-5 text-foreground" />
-          </Link>
-          <span className="text-sm text-muted-foreground">경기 상세</span>
+    <div className="h-screen bg-background overflow-hidden flex flex-col lg:flex-row">
+      {/* Left Section: Video + Score (Mobile: top, Desktop: left) */}
+      <div className="flex flex-col lg:flex-1 lg:h-full">
+        {/* Header */}
+        <div className="bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 border-b border-border lg:border-r">
+          <div className="flex items-center gap-2 px-2 py-2">
+            <Link
+              href="/match"
+              className="p-2 rounded-full hover:bg-secondary transition-colors"
+              aria-label="뒤로 가기"
+            >
+              <ChevronLeft className="w-5 h-5 text-foreground" />
+            </Link>
+            <span className="text-sm text-muted-foreground">경기 상세</span>
+          </div>
+        </div>
+
+        {/* Score Header */}
+        <ScoreHeader
+          homeTeam={match.homeTeam}
+          awayTeam={match.awayTeam}
+          homeScore={match.homeScore}
+          awayScore={match.awayScore}
+          matchTime={match.matchTime}
+          status={match.status}
+        />
+
+        {/* Video Player */}
+        <div className="lg:flex-1 lg:flex lg:items-center lg:bg-black">
+          <div className="w-full lg:max-h-full">
+            <VideoPlayer videoId={match.videoId} />
+          </div>
         </div>
       </div>
 
-      <ScoreHeader
-        homeTeam={match.homeTeam}
-        awayTeam={match.awayTeam}
-        homeScore={match.homeScore}
-        awayScore={match.awayScore}
-        matchTime={match.matchTime}
-        status={match.status}
-      />
-
-      <main>
-        <VideoPlayer videoId={match.videoId} />
+      {/* Right Section: Tabs (Mobile: bottom with scroll, Desktop: right sidebar) */}
+      <div className="flex-1 lg:flex-none lg:w-[400px] xl:w-[450px] lg:h-full lg:border-l lg:border-border overflow-hidden">
         <MatchTabs videoId={match.videoId} />
-      </main>
+      </div>
     </div>
   )
 }

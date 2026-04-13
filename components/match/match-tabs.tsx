@@ -11,8 +11,8 @@ interface MatchTabsProps {
 
 export function MatchTabs({ videoId }: MatchTabsProps) {
   return (
-    <Tabs defaultValue="info" className="w-full">
-      <TabsList className="w-full grid grid-cols-3 bg-card border-b border-border rounded-none h-12">
+    <Tabs defaultValue="info" className="w-full h-full flex flex-col">
+      <TabsList className="w-full grid grid-cols-3 bg-card border-b border-border rounded-none h-12 shrink-0">
         <TabsTrigger
           value="chat"
           className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-foreground rounded-none text-sm font-medium"
@@ -33,15 +33,15 @@ export function MatchTabs({ videoId }: MatchTabsProps) {
         </TabsTrigger>
       </TabsList>
       
-      <TabsContent value="chat" className="mt-0">
+      <TabsContent value="chat" className="mt-0 flex-1 overflow-hidden">
         <ChatTab videoId={videoId} />
       </TabsContent>
       
-      <TabsContent value="info" className="mt-0">
+      <TabsContent value="info" className="mt-0 flex-1 overflow-hidden">
         <MatchInfoTab />
       </TabsContent>
       
-      <TabsContent value="lineup" className="mt-0">
+      <TabsContent value="lineup" className="mt-0 flex-1 overflow-hidden">
         <LineupTab />
       </TabsContent>
     </Tabs>

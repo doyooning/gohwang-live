@@ -70,7 +70,7 @@ function EventDescription({ event }: { event: MatchEvent }) {
 
 export function MatchInfoTab() {
   return (
-    <ScrollArea className="h-[calc(100vh-280px)] min-h-[300px]">
+    <ScrollArea className="h-full">
       <div className="py-2">
         {sampleEvents.map((event) => (
           <div
