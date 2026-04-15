@@ -8,8 +8,8 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: '아마추어 축구 라이브',
-  description: '실시간 아마추어 축구 경기 중계 및 경기 정보',
+  title: '고황 축구 라이브 | GOHWANG LIVE',
+  description: '경희대학교 고황 축구 대회 경기 라이브 중계 및 경기 정보',
   generator: 'v0.app',
   icons: {
     icon: [

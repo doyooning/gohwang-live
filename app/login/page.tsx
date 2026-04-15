@@ -8,7 +8,7 @@ export default function LoginPage() {
       {/* Top: App name */}
       <header className="pt-8 pb-4 px-4 text-center">
         <Link href="/">
-          <h1 className="text-2xl font-bold text-foreground">KICK LIVE</h1>
+          <h1 className="text-2xl font-bold text-foreground">GOHWANG LIVE</h1>
         </Link>
         <p className="text-sm text-muted-foreground mt-1">운영자 로그인</p>
       </header>
