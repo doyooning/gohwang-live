@@ -1,33 +1,16 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import { createClient } from "@/lib/supabase/client"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Circle, RectangleHorizontal, ArrowLeftRight } from "lucide-react"
+import { Circle, RectangleHorizontal, ArrowLeftRight, Loader2 } from "lucide-react"
+import type { MatchEvent } from "@/lib/types"
 
-type EventType = "goal" | "yellow_card" | "red_card" | "substitution"
-
-interface MatchEvent {
-  id: string
-  type: EventType
-  time: string
-  team: "home" | "away"
-  player: string
-  assistPlayer?: string
-  playerIn?: string
-  playerOut?: string
+interface MatchInfoTabProps {
+  matchId?: string
 }
 
-const sampleEvents: MatchEvent[] = [
-  { id: "1", type: "goal", time: "12'", team: "home", player: "김민수", assistPlayer: "이정우" },
-  { id: "2", type: "yellow_card", time: "23'", team: "away", player: "박준혁" },
-  { id: "3", type: "goal", time: "34'", team: "away", player: "최동현" },
-  { id: "4", type: "substitution", time: "45'", team: "home", player: "", playerIn: "장현우", playerOut: "김민수" },
-  { id: "5", type: "goal", time: "56'", team: "home", player: "이정우" },
-  { id: "6", type: "yellow_card", time: "67'", team: "home", player: "정태영" },
-  { id: "7", type: "red_card", time: "78'", team: "away", player: "한승우" },
-  { id: "8", type: "goal", time: "85'", team: "home", player: "조성민", assistPlayer: "장현우" },
-]
-
-function EventIcon({ type }: { type: EventType }) {
+function EventIcon({ type }: { type: string }) {
   switch (type) {
     case "goal":
       return <Circle className="w-4 h-4 fill-primary text-primary" />
@@ -37,53 +20,122 @@ function EventIcon({ type }: { type: EventType }) {
       return <RectangleHorizontal className="w-4 h-4 fill-destructive text-destructive rotate-90" />
     case "substitution":
       return <ArrowLeftRight className="w-4 h-4 text-muted-foreground" />
+    default:
+      return null
   }
 }
 
 function EventDescription({ event }: { event: MatchEvent }) {
-  switch (event.type) {
+  switch (event.event_type) {
     case "goal":
       return (
         <div>
-          <span className="font-medium text-foreground">{event.player}</span>
-          {event.assistPlayer && (
+          <span className="font-medium text-foreground">{event.player_name}</span>
+          {event.description && (
             <span className="text-muted-foreground text-xs ml-1">
-              (어시스트: {event.assistPlayer})
+              ({event.description})
             </span>
           )}
         </div>
       )
     case "yellow_card":
     case "red_card":
-      return <span className="font-medium text-foreground">{event.player}</span>
+      return <span className="font-medium text-foreground">{event.player_name}</span>
     case "substitution":
       return (
         <div className="flex items-center gap-1">
           <span className="text-primary text-sm">IN</span>
-          <span className="font-medium text-foreground">{event.playerIn}</span>
-          <span className="text-destructive text-sm ml-2">OUT</span>
-          <span className="text-muted-foreground">{event.playerOut}</span>
+          <span className="font-medium text-foreground">{event.player_name}</span>
+          {event.description && (
+            <>
+              <span className="text-destructive text-sm ml-2">OUT</span>
+              <span className="text-muted-foreground">{event.description}</span>
+            </>
+          )}
         </div>
       )
+    default:
+      return <span className="font-medium text-foreground">{event.player_name}</span>
   }
 }
 
-export function MatchInfoTab() {
+export function MatchInfoTab({ matchId }: MatchInfoTabProps) {
+  const [events, setEvents] = useState<MatchEvent[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!matchId) {
+      setLoading(false)
+      return
+    }
+
+    const supabase = createClient()
+
+    async function fetchEvents() {
+      const { data, error } = await supabase
+        .from("match_events")
+        .select("*")
+        .eq("match_id", matchId)
+        .order("minute", { ascending: true })
+
+      if (error) {
+        console.error("Error fetching events:", error)
+      } else {
+        setEvents(data || [])
+      }
+      setLoading(false)
+    }
+
+    fetchEvents()
+
+    // Subscribe to realtime updates
+    const channel = supabase
+      .channel(`match-events-${matchId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "match_events", filter: `match_id=eq.${matchId}` },
+        () => {
+          fetchEvents()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [matchId])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="size-6 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  if (events.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+        아직 기록된 이벤트가 없습니다
+      </div>
+    )
+  }
+
   return (
     <ScrollArea className="h-full">
       <div className="py-2">
-        {sampleEvents.map((event) => (
+        {events.map((event) => (
           <div
             key={event.id}
             className={`flex items-center gap-3 px-4 py-3 border-b border-border/50 ${
-              event.team === "away" ? "flex-row-reverse" : ""
+              event.team_side === "away" ? "flex-row-reverse" : ""
             }`}
           >
             <div className="flex items-center gap-2 min-w-[60px]">
-              <span className="text-sm font-bold text-primary tabular-nums">{event.time}</span>
-              <EventIcon type={event.type} />
+              <span className="text-sm font-bold text-primary tabular-nums">{event.minute}&apos;</span>
+              <EventIcon type={event.event_type} />
             </div>
-            <div className={`flex-1 ${event.team === "away" ? "text-right" : "text-left"}`}>
+            <div className={`flex-1 ${event.team_side === "away" ? "text-right" : "text-left"}`}>
               <EventDescription event={event} />
             </div>
           </div>

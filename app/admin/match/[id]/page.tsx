@@ -3,6 +3,7 @@
 import { useAuth } from "@/contexts/auth-context"
 import { useRouter, useParams } from "next/navigation"
 import { useEffect, useState, useCallback } from "react"
+import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -23,20 +24,11 @@ import {
   Clock,
   Users,
   Image as ImageIcon,
+  Loader2,
 } from "lucide-react"
+import type { Match, MatchEvent, Lineup } from "@/lib/types"
 
-// Types
-type EventType = "goal" | "yellow" | "red" | "substitution"
-
-interface MatchEvent {
-  id: string
-  type: EventType
-  team: "home" | "away"
-  minute: number
-  playerName: string
-  playerOutName?: string
-  assistPlayerName?: string
-}
+type EventType = "goal" | "yellow_card" | "red_card" | "substitution"
 
 interface Player {
   id: string
@@ -44,62 +36,16 @@ interface Player {
   number: number
 }
 
-// Mock data
-const MATCH_DATA = {
-  id: "match-1",
-  homeTeam: "FC 서울 유스",
-  awayTeam: "수원 삼성 유스",
-  homeScore: 2,
-  awayScore: 1,
-  status: "live" as const,
-  currentTime: 67,
-  thumbnailUrl: "/images/match-thumbnail.jpg",
-}
-
-const HOME_PLAYERS: Player[] = [
-  { id: "h1", name: "김민수", number: 1 },
-  { id: "h2", name: "이준호", number: 2 },
-  { id: "h3", name: "박지훈", number: 3 },
-  { id: "h4", name: "최영준", number: 4 },
-  { id: "h5", name: "정우성", number: 5 },
-  { id: "h6", name: "강현우", number: 6 },
-  { id: "h7", name: "윤성민", number: 7 },
-  { id: "h8", name: "임재현", number: 8 },
-  { id: "h9", name: "한동훈", number: 9 },
-  { id: "h10", name: "오승환", number: 10 },
-  { id: "h11", name: "신태용", number: 11 },
-]
-
-const AWAY_PLAYERS: Player[] = [
-  { id: "a1", name: "조현우", number: 1 },
-  { id: "a2", name: "김진수", number: 2 },
-  { id: "a3", name: "이용", number: 3 },
-  { id: "a4", name: "김영권", number: 4 },
-  { id: "a5", name: "황인범", number: 5 },
-  { id: "a6", name: "정우영", number: 6 },
-  { id: "a7", name: "손흥민", number: 7 },
-  { id: "a8", name: "이강인", number: 8 },
-  { id: "a9", name: "황희찬", number: 9 },
-  { id: "a10", name: "조규성", number: 10 },
-  { id: "a11", name: "김민재", number: 11 },
-]
-
-const INITIAL_EVENTS: MatchEvent[] = [
-  { id: "e1", type: "goal", team: "home", minute: 23, playerName: "한동훈", assistPlayerName: "오승환" },
-  { id: "e2", type: "yellow", team: "away", minute: 35, playerName: "황인범" },
-  { id: "e3", type: "goal", team: "away", minute: 41, playerName: "손흥민", assistPlayerName: "이강인" },
-  { id: "e4", type: "goal", team: "home", minute: 58, playerName: "오승환" },
-]
-
 export default function MatchControlPage() {
   const { user } = useAuth()
   const router = useRouter()
   const params = useParams()
+  const matchId = params.id as string
 
-  const [matchTime, setMatchTime] = useState(MATCH_DATA.currentTime)
-  const [homeScore, setHomeScore] = useState(MATCH_DATA.homeScore)
-  const [awayScore, setAwayScore] = useState(MATCH_DATA.awayScore)
-  const [events, setEvents] = useState<MatchEvent[]>(INITIAL_EVENTS)
+  const [match, setMatch] = useState<Match | null>(null)
+  const [events, setEvents] = useState<MatchEvent[]>([])
+  const [players, setPlayers] = useState<{ home: Player[]; away: Player[] }>({ home: [], away: [] })
+  const [loading, setLoading] = useState(true)
   const [showThumbnail, setShowThumbnail] = useState(false)
 
   // Input panel state
@@ -108,23 +54,81 @@ export default function MatchControlPage() {
   const [selectedPlayer, setSelectedPlayer] = useState("")
   const [selectedPlayerOut, setSelectedPlayerOut] = useState("")
   const [selectedAssistPlayer, setSelectedAssistPlayer] = useState("")
-  const [cardType, setCardType] = useState<"yellow" | "red">("yellow")
+  const [cardType, setCardType] = useState<"yellow_card" | "red_card">("yellow_card")
   const [inputMinute, setInputMinute] = useState("")
 
   // Auth guard
   useEffect(() => {
     if (!user) {
       router.push("/login")
-    } else if (user.role !== "operator") {
-      router.push("/")
     }
   }, [user, router])
 
+  // Fetch data
+  useEffect(() => {
+    const supabase = createClient()
+
+    async function fetchData() {
+      const [matchResult, eventsResult, lineupsResult] = await Promise.all([
+        supabase.from("matches").select("*").eq("id", matchId).single(),
+        supabase.from("match_events").select("*").eq("match_id", matchId).order("minute", { ascending: false }),
+        supabase.from("lineups").select("*").eq("match_id", matchId),
+      ])
+
+      if (matchResult.data) {
+        setMatch(matchResult.data)
+      }
+      if (eventsResult.data) {
+        setEvents(eventsResult.data)
+      }
+      if (lineupsResult.data) {
+        const homePlayers = lineupsResult.data
+          .filter((l: Lineup) => l.team_side === "home")
+          .map((l: Lineup) => ({ id: l.id, name: l.player_name, number: l.jersey_number }))
+        const awayPlayers = lineupsResult.data
+          .filter((l: Lineup) => l.team_side === "away")
+          .map((l: Lineup) => ({ id: l.id, name: l.player_name, number: l.jersey_number }))
+        setPlayers({ home: homePlayers, away: awayPlayers })
+      }
+      setLoading(false)
+    }
+
+    fetchData()
+
+    // Subscribe to realtime updates
+    const eventsChannel = supabase
+      .channel(`match-events-admin-${matchId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "match_events", filter: `match_id=eq.${matchId}` },
+        () => {
+          fetchData()
+        }
+      )
+      .subscribe()
+
+    const matchChannel = supabase
+      .channel(`match-admin-${matchId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "matches", filter: `id=eq.${matchId}` },
+        () => {
+          fetchData()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(eventsChannel)
+      supabase.removeChannel(matchChannel)
+    }
+  }, [matchId])
+
   const getPlayers = useCallback(
     (team: "home" | "away") => {
-      return team === "home" ? HOME_PLAYERS : AWAY_PLAYERS
+      return team === "home" ? players.home : players.away
     },
-    []
+    [players]
   )
 
   const resetForm = () => {
@@ -132,86 +136,107 @@ export default function MatchControlPage() {
     setSelectedPlayer("")
     setSelectedPlayerOut("")
     setSelectedAssistPlayer("")
-    setCardType("yellow")
+    setCardType("yellow_card")
     setInputMinute("")
     setActivePanel(null)
   }
 
-  const handleSaveEvent = () => {
-    if (!selectedTeam || !selectedPlayer) return
+  const handleSaveEvent = async () => {
+    if (!selectedTeam || !selectedPlayer || !match) return
 
-    const minute = inputMinute ? parseInt(inputMinute) : matchTime
-    const players = getPlayers(selectedTeam as "home" | "away")
-    const player = players.find((p) => p.id === selectedPlayer)
+    const supabase = createClient()
+    const minute = inputMinute ? parseInt(inputMinute) : 0
+    const teamPlayers = getPlayers(selectedTeam as "home" | "away")
+    const player = teamPlayers.find((p) => p.id === selectedPlayer)
 
     if (!player) return
 
-    const newEvent: MatchEvent = {
-      id: `e${Date.now()}`,
-      type: activePanel === "yellow" || activePanel === "red" ? cardType : activePanel!,
-      team: selectedTeam as "home" | "away",
-      minute,
-      playerName: player.name,
-    }
+    const eventType = activePanel === "yellow_card" || activePanel === "red_card" ? cardType : activePanel!
 
-    if (activePanel === "substitution" && selectedPlayerOut) {
-      const playerOut = players.find((p) => p.id === selectedPlayerOut)
-      if (playerOut) {
-        newEvent.playerOutName = playerOut.name
-      }
-    }
-
-    // Add assist player for goals
-    if (activePanel === "goal" && selectedAssistPlayer) {
-      const assistPlayer = players.find((p) => p.id === selectedAssistPlayer)
+    let description = ""
+    if (activePanel === "goal" && selectedAssistPlayer && selectedAssistPlayer !== "none") {
+      const assistPlayer = teamPlayers.find((p) => p.id === selectedAssistPlayer)
       if (assistPlayer) {
-        newEvent.assistPlayerName = assistPlayer.name
+        description = `어시스트: ${assistPlayer.name}`
       }
+    }
+    if (activePanel === "substitution" && selectedPlayerOut) {
+      const playerOut = teamPlayers.find((p) => p.id === selectedPlayerOut)
+      if (playerOut) {
+        description = playerOut.name
+      }
+    }
+
+    const { error } = await supabase.from("match_events").insert({
+      match_id: matchId,
+      event_type: eventType,
+      team_side: selectedTeam,
+      player_name: player.name,
+      minute,
+      description,
+    })
+
+    if (error) {
+      console.error("Error saving event:", error)
+      return
     }
 
     // Update score for goals
     if (activePanel === "goal") {
-      if (selectedTeam === "home") {
-        setHomeScore((prev) => prev + 1)
-      } else {
-        setAwayScore((prev) => prev + 1)
-      }
+      const updateData = selectedTeam === "home"
+        ? { home_score: match.home_score + 1 }
+        : { away_score: match.away_score + 1 }
+
+      await supabase.from("matches").update(updateData).eq("id", matchId)
     }
 
-    setEvents((prev) => [newEvent, ...prev])
     resetForm()
   }
 
-  const getEventIcon = (type: EventType) => {
+  const getEventIcon = (type: string) => {
     switch (type) {
       case "goal":
         return <Goal className="size-4" />
-      case "yellow":
+      case "yellow_card":
         return <div className="size-3 rounded-sm bg-yellow-400" />
-      case "red":
+      case "red_card":
         return <div className="size-3 rounded-sm bg-red-500" />
       case "substitution":
         return <RefreshCw className="size-4" />
+      default:
+        return null
     }
   }
 
   const getEventLabel = (event: MatchEvent) => {
-    switch (event.type) {
+    switch (event.event_type) {
       case "goal":
-        return event.assistPlayerName 
-          ? `${event.playerName} 득점 (어시스트: ${event.assistPlayerName})`
-          : `${event.playerName} 득점`
-      case "yellow":
-        return `${event.playerName} 경고`
-      case "red":
-        return `${event.playerName} 퇴장`
+        return event.description
+          ? `${event.player_name} 득점 (${event.description})`
+          : `${event.player_name} 득점`
+      case "yellow_card":
+        return `${event.player_name} 경고`
+      case "red_card":
+        return `${event.player_name} 퇴장`
       case "substitution":
-        return `${event.playerOutName} OUT / ${event.playerName} IN`
+        return event.description
+          ? `${event.description} OUT / ${event.player_name} IN`
+          : `${event.player_name} IN`
+      default:
+        return event.player_name
     }
   }
 
-  if (!user || user.role !== "operator") {
+  if (!user) {
     return null
+  }
+
+  if (loading || !match) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="size-8 animate-spin text-primary" />
+      </div>
+    )
   }
 
   return (
@@ -227,17 +252,19 @@ export default function MatchControlPage() {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => router.push(`/admin/match/${params.id}/lineup`)}
+              onClick={() => router.push(`/admin/match/${matchId}/lineup`)}
             >
               <Users className="size-5" />
             </Button>
           </div>
-          <Badge className="bg-destructive text-destructive-foreground">
-            <span className="relative flex size-2 mr-1.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive-foreground opacity-75" />
-              <span className="relative inline-flex size-2 rounded-full bg-destructive-foreground" />
-            </span>
-            LIVE
+          <Badge className={match.status === "live" ? "bg-destructive text-destructive-foreground" : "bg-secondary"}>
+            {match.status === "live" && (
+              <span className="relative flex size-2 mr-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive-foreground opacity-75" />
+                <span className="relative inline-flex size-2 rounded-full bg-destructive-foreground" />
+              </span>
+            )}
+            {match.status === "live" ? "LIVE" : match.status === "scheduled" ? "예정" : "종료"}
           </Badge>
           <div className="flex items-center gap-2">
             <ImageIcon className="size-4 text-muted-foreground" />
@@ -262,21 +289,21 @@ export default function MatchControlPage() {
           <div className="flex items-center justify-between">
             <div className="flex-1 text-center">
               <p className="text-sm font-medium text-foreground truncate">
-                {MATCH_DATA.homeTeam}
+                {match.home_team}
               </p>
             </div>
             <div className="px-4 text-center">
               <p className="text-3xl font-bold text-foreground">
-                {homeScore} : {awayScore}
+                {match.home_score} : {match.away_score}
               </p>
               <div className="flex items-center justify-center gap-1 text-primary text-sm font-medium mt-1">
                 <Clock className="size-3" />
-                {matchTime}&apos;
+                {match.status === "live" ? "LIVE" : match.status}
               </div>
             </div>
             <div className="flex-1 text-center">
               <p className="text-sm font-medium text-foreground truncate">
-                {MATCH_DATA.awayTeam}
+                {match.away_team}
               </p>
             </div>
           </div>
@@ -300,11 +327,11 @@ export default function MatchControlPage() {
           </Button>
           <Button
             size="lg"
-            variant={activePanel === "yellow" || activePanel === "red" ? "default" : "secondary"}
+            variant={activePanel === "yellow_card" || activePanel === "red_card" ? "default" : "secondary"}
             className="h-14 flex-col gap-1"
             onClick={() => {
               resetForm()
-              setActivePanel(activePanel === "yellow" || activePanel === "red" ? null : "yellow")
+              setActivePanel(activePanel === "yellow_card" || activePanel === "red_card" ? null : "yellow_card")
             }}
           >
             <Square className="size-5" />
@@ -331,7 +358,7 @@ export default function MatchControlPage() {
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-foreground">
               {activePanel === "goal" && "득점 기록"}
-              {(activePanel === "yellow" || activePanel === "red") && "경고/퇴장 기록"}
+              {(activePanel === "yellow_card" || activePanel === "red_card") && "경고/퇴장 기록"}
               {activePanel === "substitution" && "교체 기록"}
             </h3>
             <Button variant="ghost" size="icon" onClick={resetForm}>
@@ -352,7 +379,7 @@ export default function MatchControlPage() {
                   setSelectedAssistPlayer("")
                 }}
               >
-                {MATCH_DATA.homeTeam}
+                {match.home_team}
               </Button>
               <Button
                 variant={selectedTeam === "away" ? "default" : "outline"}
@@ -364,25 +391,25 @@ export default function MatchControlPage() {
                   setSelectedAssistPlayer("")
                 }}
               >
-                {MATCH_DATA.awayTeam}
+                {match.away_team}
               </Button>
             </div>
 
             {/* Card Type (for card events) */}
-            {(activePanel === "yellow" || activePanel === "red") && (
+            {(activePanel === "yellow_card" || activePanel === "red_card") && (
               <div className="grid grid-cols-2 gap-2">
                 <Button
-                  variant={cardType === "yellow" ? "default" : "outline"}
+                  variant={cardType === "yellow_card" ? "default" : "outline"}
                   className="h-12 gap-2"
-                  onClick={() => setCardType("yellow")}
+                  onClick={() => setCardType("yellow_card")}
                 >
                   <div className="size-4 rounded-sm bg-yellow-400" />
                   경고
                 </Button>
                 <Button
-                  variant={cardType === "red" ? "default" : "outline"}
+                  variant={cardType === "red_card" ? "default" : "outline"}
                   className="h-12 gap-2"
-                  onClick={() => setCardType("red")}
+                  onClick={() => setCardType("red_card")}
                 >
                   <div className="size-4 rounded-sm bg-red-500" />
                   퇴장
@@ -397,10 +424,10 @@ export default function MatchControlPage() {
                   <SelectTrigger className="w-full h-12">
                     <SelectValue
                       placeholder={
-                        activePanel === "goal" 
-                          ? "득점 선수 선택" 
-                          : activePanel === "substitution" 
-                            ? "교체 IN 선수 선택" 
+                        activePanel === "goal"
+                          ? "득점 선수 선택"
+                          : activePanel === "substitution"
+                            ? "교체 IN 선수 선택"
                             : "선수 선택"
                       }
                     />
@@ -457,20 +484,13 @@ export default function MatchControlPage() {
             <div className="flex items-center gap-2">
               <Input
                 type="number"
-                placeholder={`분 (기본: ${matchTime}')`}
+                placeholder="분"
                 value={inputMinute}
                 onChange={(e) => setInputMinute(e.target.value)}
                 className="h-12 flex-1"
                 min={1}
                 max={120}
               />
-              <Button
-                variant="outline"
-                className="h-12 px-4"
-                onClick={() => setInputMinute(matchTime.toString())}
-              >
-                현재 시간
-              </Button>
             </div>
 
             {/* Save Button */}
@@ -506,14 +526,14 @@ export default function MatchControlPage() {
                 className="flex items-center gap-3 bg-card border border-border rounded-lg p-3"
               >
                 <div className="flex items-center justify-center size-8 rounded-full bg-secondary">
-                  {getEventIcon(event.type)}
+                  {getEventIcon(event.event_type)}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground truncate">
                     {getEventLabel(event)}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {event.team === "home" ? MATCH_DATA.homeTeam : MATCH_DATA.awayTeam}
+                    {event.team_side === "home" ? match.home_team : match.away_team}
                   </p>
                 </div>
                 <div className="text-sm font-medium text-primary">{event.minute}&apos;</div>

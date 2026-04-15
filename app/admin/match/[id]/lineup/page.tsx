@@ -3,6 +3,7 @@
 import { useAuth } from "@/contexts/auth-context"
 import { useRouter, useParams } from "next/navigation"
 import { useEffect, useState } from "react"
+import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
@@ -29,9 +30,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { ArrowLeft, Plus, Trash2, Save, Users } from "lucide-react"
+import { ArrowLeft, Plus, Trash2, Save, Users, Loader2 } from "lucide-react"
+import type { Match, Lineup } from "@/lib/types"
 
-// Types
 type Position = "GK" | "DF" | "MF" | "FW"
 type Formation = "4-3-3" | "4-2-3-1" | "3-4-3"
 
@@ -43,53 +44,7 @@ interface Player {
   isStarter: boolean
 }
 
-interface TeamLineup {
-  home: Player[]
-  away: Player[]
-}
-
-// Mock data
-const MATCH_DATA = {
-  id: "match-1",
-  homeTeam: "FC 서울 유스",
-  awayTeam: "수원 삼성 유스",
-}
-
 const FORMATIONS: Formation[] = ["4-3-3", "4-2-3-1", "3-4-3"]
-
-const INITIAL_LINEUP: TeamLineup = {
-  home: [
-    { id: "h1", name: "김민수", number: 1, position: "GK", isStarter: true },
-    { id: "h2", name: "이준호", number: 2, position: "DF", isStarter: true },
-    { id: "h3", name: "박지훈", number: 3, position: "DF", isStarter: true },
-    { id: "h4", name: "최영준", number: 4, position: "DF", isStarter: true },
-    { id: "h5", name: "정우성", number: 5, position: "DF", isStarter: true },
-    { id: "h6", name: "강현우", number: 6, position: "MF", isStarter: true },
-    { id: "h7", name: "윤성민", number: 7, position: "MF", isStarter: true },
-    { id: "h8", name: "임재현", number: 8, position: "MF", isStarter: true },
-    { id: "h9", name: "한동훈", number: 9, position: "FW", isStarter: true },
-    { id: "h10", name: "오승환", number: 10, position: "FW", isStarter: true },
-    { id: "h11", name: "신태용", number: 11, position: "FW", isStarter: true },
-    { id: "h12", name: "권창훈", number: 12, position: "GK", isStarter: false },
-    { id: "h13", name: "김태환", number: 13, position: "DF", isStarter: false },
-    { id: "h14", name: "이명주", number: 14, position: "MF", isStarter: false },
-  ],
-  away: [
-    { id: "a1", name: "조현우", number: 1, position: "GK", isStarter: true },
-    { id: "a2", name: "김진수", number: 2, position: "DF", isStarter: true },
-    { id: "a3", name: "이용", number: 3, position: "DF", isStarter: true },
-    { id: "a4", name: "김영권", number: 4, position: "DF", isStarter: true },
-    { id: "a5", name: "황인범", number: 5, position: "MF", isStarter: true },
-    { id: "a6", name: "정우영", number: 6, position: "MF", isStarter: true },
-    { id: "a7", name: "손흥민", number: 7, position: "FW", isStarter: true },
-    { id: "a8", name: "이강인", number: 8, position: "MF", isStarter: true },
-    { id: "a9", name: "황희찬", number: 9, position: "FW", isStarter: true },
-    { id: "a10", name: "조규성", number: 10, position: "FW", isStarter: true },
-    { id: "a11", name: "김민재", number: 11, position: "DF", isStarter: true },
-    { id: "a12", name: "송범근", number: 12, position: "GK", isStarter: false },
-    { id: "a13", name: "홍철", number: 13, position: "DF", isStarter: false },
-  ],
-}
 
 const POSITIONS: { value: Position; label: string }[] = [
   { value: "GK", label: "골키퍼" },
@@ -102,9 +57,11 @@ export default function LineupManagementPage() {
   const { user } = useAuth()
   const router = useRouter()
   const params = useParams()
+  const matchId = params.id as string
 
+  const [match, setMatch] = useState<Match | null>(null)
   const [activeTeam, setActiveTeam] = useState<"home" | "away">("home")
-  const [lineup, setLineup] = useState<TeamLineup>(INITIAL_LINEUP)
+  const [lineup, setLineup] = useState<{ home: Player[]; away: Player[] }>({ home: [], away: [] })
   const [formations, setFormations] = useState<{ home: Formation; away: Formation }>({
     home: "4-3-3",
     away: "4-3-3",
@@ -112,6 +69,7 @@ export default function LineupManagementPage() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isFormationSelectOpen, setIsFormationSelectOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   // Alert dialog state
   const [alertOpen, setAlertOpen] = useState(false)
@@ -127,10 +85,49 @@ export default function LineupManagementPage() {
   useEffect(() => {
     if (!user) {
       router.push("/login")
-    } else if (user.role !== "operator") {
-      router.push("/")
     }
   }, [user, router])
+
+  // Fetch data
+  useEffect(() => {
+    const supabase = createClient()
+
+    async function fetchData() {
+      const [matchResult, lineupsResult] = await Promise.all([
+        supabase.from("matches").select("*").eq("id", matchId).single(),
+        supabase.from("lineups").select("*").eq("match_id", matchId),
+      ])
+
+      if (matchResult.data) {
+        setMatch(matchResult.data)
+      }
+
+      if (lineupsResult.data) {
+        const homePlayers: Player[] = lineupsResult.data
+          .filter((l: Lineup) => l.team_side === "home")
+          .map((l: Lineup) => ({
+            id: l.id,
+            name: l.player_name,
+            number: l.jersey_number,
+            position: "MF" as Position, // Default position since DB doesn't have it
+            isStarter: l.is_starter,
+          }))
+        const awayPlayers: Player[] = lineupsResult.data
+          .filter((l: Lineup) => l.team_side === "away")
+          .map((l: Lineup) => ({
+            id: l.id,
+            name: l.player_name,
+            number: l.jersey_number,
+            position: "MF" as Position,
+            isStarter: l.is_starter,
+          }))
+        setLineup({ home: homePlayers, away: awayPlayers })
+      }
+      setLoading(false)
+    }
+
+    fetchData()
+  }, [matchId])
 
   const currentPlayers = lineup[activeTeam]
   const starters = currentPlayers.filter((p) => p.isStarter)
@@ -188,18 +185,40 @@ export default function LineupManagementPage() {
     }))
   }
 
-  const handleRemovePlayer = (playerId: string) => {
+  const handleRemovePlayer = async (playerId: string) => {
+    const supabase = createClient()
+    await supabase.from("lineups").delete().eq("id", playerId)
+
     setLineup((prev) => ({
       ...prev,
       [activeTeam]: prev[activeTeam].filter((player) => player.id !== playerId),
     }))
   }
 
-  const handleAddPlayer = () => {
+  const handleAddPlayer = async () => {
     if (!newPlayerName || !newPlayerNumber) return
 
+    const supabase = createClient()
+
+    const { data, error } = await supabase
+      .from("lineups")
+      .insert({
+        match_id: matchId,
+        team_side: activeTeam,
+        player_name: newPlayerName,
+        jersey_number: parseInt(newPlayerNumber),
+        is_starter: newPlayerIsStarter,
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Error adding player:", error)
+      return
+    }
+
     const newPlayer: Player = {
-      id: `${activeTeam}-${Date.now()}`,
+      id: data.id,
       name: newPlayerName,
       number: parseInt(newPlayerNumber),
       position: newPlayerPosition,
@@ -237,10 +256,19 @@ export default function LineupManagementPage() {
     }
 
     setIsSaving(true)
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+
+    const supabase = createClient()
+
+    // Update is_starter for all players
+    const allPlayers = [...lineup.home, ...lineup.away]
+    for (const player of allPlayers) {
+      await supabase
+        .from("lineups")
+        .update({ is_starter: player.isStarter })
+        .eq("id", player.id)
+    }
+
     setIsSaving(false)
-    // Show success feedback
     setAlertMessage("라인업이 저장되었습니다.")
     setAlertOpen(true)
   }
@@ -253,8 +281,16 @@ export default function LineupManagementPage() {
     setIsFormationSelectOpen(false)
   }
 
-  if (!user || user.role !== "operator") {
+  if (!user) {
     return null
+  }
+
+  if (loading || !match) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="size-8 animate-spin text-primary" />
+      </div>
+    )
   }
 
   return (
@@ -265,14 +301,14 @@ export default function LineupManagementPage() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => router.push(`/admin/match/${params.id}`)}
+            onClick={() => router.push(`/admin/match/${matchId}`)}
           >
             <ArrowLeft className="size-5" />
           </Button>
           <div className="flex-1">
             <h1 className="text-lg font-semibold text-foreground">라인업 관리</h1>
             <p className="text-xs text-muted-foreground">
-              {MATCH_DATA.homeTeam} vs {MATCH_DATA.awayTeam}
+              {match.home_team} vs {match.away_team}
             </p>
           </div>
           <Button
@@ -295,7 +331,7 @@ export default function LineupManagementPage() {
             onClick={() => setActiveTeam("home")}
           >
             <div className="flex flex-col items-center">
-              <span className="font-medium">{MATCH_DATA.homeTeam}</span>
+              <span className="font-medium">{match.home_team}</span>
               <span className="text-xs opacity-70">홈팀</span>
             </div>
           </Button>
@@ -305,7 +341,7 @@ export default function LineupManagementPage() {
             onClick={() => setActiveTeam("away")}
           >
             <div className="flex flex-col items-center">
-              <span className="font-medium">{MATCH_DATA.awayTeam}</span>
+              <span className="font-medium">{match.away_team}</span>
               <span className="text-xs opacity-70">원정팀</span>
             </div>
           </Button>

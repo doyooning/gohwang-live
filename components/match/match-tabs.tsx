@@ -7,9 +7,10 @@ import { LineupTab } from "./lineup-tab"
 
 interface MatchTabsProps {
   videoId?: string
+  matchId?: string
 }
 
-export function MatchTabs({ videoId }: MatchTabsProps) {
+export function MatchTabs({ videoId, matchId }: MatchTabsProps) {
   return (
     <Tabs defaultValue="info" className="w-full h-full flex flex-col">
       <TabsList className="w-full grid grid-cols-3 bg-card border-b border-border rounded-none h-12 shrink-0">
@@ -38,11 +39,11 @@ export function MatchTabs({ videoId }: MatchTabsProps) {
       </TabsContent>
       
       <TabsContent value="info" className="mt-0 flex-1 overflow-hidden">
-        <MatchInfoTab />
+        <MatchInfoTab matchId={matchId} />
       </TabsContent>
       
       <TabsContent value="lineup" className="mt-0 flex-1 overflow-hidden">
-        <LineupTab />
+        <LineupTab matchId={matchId} />
       </TabsContent>
     </Tabs>
   )
