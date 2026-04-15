@@ -1,69 +1,25 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import { createClient } from "@/lib/supabase/client"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Loader2 } from "lucide-react"
+import type { Lineup, Match } from "@/lib/types"
+
+interface LineupTabProps {
+  matchId?: string
+}
 
 interface Player {
   number: number
   name: string
-  position: string
   isCaptain?: boolean
 }
 
 interface TeamLineup {
   teamName: string
-  formation: string
   starters: Player[]
   substitutes: Player[]
-}
-
-const homeLineup: TeamLineup = {
-  teamName: "FC 서울드림",
-  formation: "4-3-3",
-  starters: [
-    { number: 1, name: "박준영", position: "GK" },
-    { number: 2, name: "이상훈", position: "RB" },
-    { number: 4, name: "김태호", position: "CB" },
-    { number: 5, name: "최민재", position: "CB" },
-    { number: 3, name: "정성진", position: "LB" },
-    { number: 6, name: "한동욱", position: "CDM" },
-    { number: 8, name: "이정우", position: "CM", isCaptain: true },
-    { number: 10, name: "장현우", position: "CM" },
-    { number: 7, name: "김민수", position: "RW" },
-    { number: 9, name: "조성민", position: "ST" },
-    { number: 11, name: "정태영", position: "LW" },
-  ],
-  substitutes: [
-    { number: 12, name: "오승현", position: "GK" },
-    { number: 14, name: "박지훈", position: "DF" },
-    { number: 15, name: "김준서", position: "MF" },
-    { number: 17, name: "이도현", position: "MF" },
-    { number: 19, name: "송민규", position: "FW" },
-  ],
-}
-
-const awayLineup: TeamLineup = {
-  teamName: "인천 유나이티드",
-  formation: "4-4-2",
-  starters: [
-    { number: 1, name: "강민수", position: "GK" },
-    { number: 2, name: "임재혁", position: "RB" },
-    { number: 4, name: "박준혁", position: "CB" },
-    { number: 5, name: "윤성준", position: "CB" },
-    { number: 3, name: "한승우", position: "LB" },
-    { number: 6, name: "김영진", position: "RM" },
-    { number: 8, name: "이준호", position: "CM", isCaptain: true },
-    { number: 10, name: "정우성", position: "CM" },
-    { number: 7, name: "최동현", position: "LM" },
-    { number: 9, name: "박성우", position: "ST" },
-    { number: 11, name: "김현우", position: "ST" },
-  ],
-  substitutes: [
-    { number: 12, name: "이승기", position: "GK" },
-    { number: 14, name: "조민수", position: "DF" },
-    { number: 16, name: "양준혁", position: "MF" },
-    { number: 18, name: "서진우", position: "MF" },
-    { number: 20, name: "권민석", position: "FW" },
-  ],
 }
 
 function PlayerRow({ player }: { player: Player }) {
@@ -80,7 +36,6 @@ function PlayerRow({ player }: { player: Player }) {
           )}
         </span>
       </div>
-      <span className="text-xs text-muted-foreground">{player.position}</span>
     </div>
   )
 }
@@ -90,29 +45,110 @@ function TeamSection({ lineup, isAway }: { lineup: TeamLineup; isAway?: boolean 
     <div className={`flex-1 ${isAway ? "border-l border-border" : ""}`}>
       <div className="px-3 py-2 bg-secondary/50">
         <div className="text-sm font-bold text-foreground">{lineup.teamName}</div>
-        <div className="text-xs text-muted-foreground">포메이션: {lineup.formation}</div>
       </div>
       
       <div className="px-1">
         <div className="text-xs text-muted-foreground px-3 py-2 border-b border-border/50">
           선발 ({lineup.starters.length}명)
         </div>
-        {lineup.starters.map((player) => (
-          <PlayerRow key={player.number} player={player} />
-        ))}
+        {lineup.starters.length === 0 ? (
+          <div className="text-xs text-muted-foreground text-center py-4">라인업 없음</div>
+        ) : (
+          lineup.starters.map((player) => (
+            <PlayerRow key={player.number} player={player} />
+          ))
+        )}
         
         <div className="text-xs text-muted-foreground px-3 py-2 border-b border-border/50 mt-2">
           교체 ({lineup.substitutes.length}명)
         </div>
-        {lineup.substitutes.map((player) => (
-          <PlayerRow key={player.number} player={player} />
-        ))}
+        {lineup.substitutes.length === 0 ? (
+          <div className="text-xs text-muted-foreground text-center py-4">교체 선수 없음</div>
+        ) : (
+          lineup.substitutes.map((player) => (
+            <PlayerRow key={player.number} player={player} />
+          ))
+        )}
       </div>
     </div>
   )
 }
 
-export function LineupTab() {
+export function LineupTab({ matchId }: LineupTabProps) {
+  const [match, setMatch] = useState<Match | null>(null)
+  const [lineups, setLineups] = useState<Lineup[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!matchId) {
+      setLoading(false)
+      return
+    }
+
+    const supabase = createClient()
+
+    async function fetchData() {
+      const [matchResult, lineupsResult] = await Promise.all([
+        supabase.from("matches").select("*").eq("id", matchId).single(),
+        supabase.from("lineups").select("*").eq("match_id", matchId).order("jersey_number", { ascending: true }),
+      ])
+
+      if (matchResult.data) {
+        setMatch(matchResult.data)
+      }
+      if (lineupsResult.data) {
+        setLineups(lineupsResult.data)
+      }
+      setLoading(false)
+    }
+
+    fetchData()
+
+    // Subscribe to realtime updates
+    const channel = supabase
+      .channel(`lineups-${matchId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "lineups", filter: `match_id=eq.${matchId}` },
+        () => {
+          fetchData()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [matchId])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="size-6 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  const homeLineup: TeamLineup = {
+    teamName: match?.home_team || "홈팀",
+    starters: lineups
+      .filter((l) => l.team_side === "home" && l.is_starter)
+      .map((l) => ({ number: l.jersey_number, name: l.player_name })),
+    substitutes: lineups
+      .filter((l) => l.team_side === "home" && !l.is_starter)
+      .map((l) => ({ number: l.jersey_number, name: l.player_name })),
+  }
+
+  const awayLineup: TeamLineup = {
+    teamName: match?.away_team || "원정팀",
+    starters: lineups
+      .filter((l) => l.team_side === "away" && l.is_starter)
+      .map((l) => ({ number: l.jersey_number, name: l.player_name })),
+    substitutes: lineups
+      .filter((l) => l.team_side === "away" && !l.is_starter)
+      .map((l) => ({ number: l.jersey_number, name: l.player_name })),
+  }
+
   return (
     <ScrollArea className="h-full">
       <div className="flex">

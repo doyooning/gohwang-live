@@ -2,14 +2,12 @@
 
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
-
-export type UserRole = "operator" | "viewer"
+import { createClient } from "@/lib/supabase/client"
 
 export interface User {
   id: string
   email: string
   name: string
-  role: UserRole
 }
 
 interface AuthContextType {
@@ -21,28 +19,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-// Mock user data for demonstration
-const MOCK_USERS: Record<string, { password: string; user: User }> = {
-  "operator@example.com": {
-    password: "operator123",
-    user: {
-      id: "1",
-      email: "operator@example.com",
-      name: "김운영",
-      role: "operator",
-    },
-  },
-  "viewer@example.com": {
-    password: "viewer123",
-    user: {
-      id: "2",
-      email: "viewer@example.com",
-      name: "이시청",
-      role: "viewer",
-    },
-  },
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -51,25 +27,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     setIsLoading(true)
 
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    const supabase = createClient()
 
-    const mockUser = MOCK_USERS[email]
+    // Check if the email/password match an admin in the database
+    const { data: admin, error } = await supabase
+      .from("admins")
+      .select("*")
+      .eq("email", email)
+      .single()
 
-    if (!mockUser || mockUser.password !== password) {
+    if (error || !admin) {
       setIsLoading(false)
       return { success: false, error: "이메일 또는 비밀번호가 올바르지 않습니다." }
     }
 
-    setUser(mockUser.user)
+    // For demo purposes, we're using a simple password check
+    // In production, you should use Supabase Auth or proper password hashing
+    if (password !== "operator123") {
+      setIsLoading(false)
+      return { success: false, error: "이메일 또는 비밀번호가 올바르지 않습니다." }
+    }
+
+    setUser({
+      id: admin.id,
+      email: admin.email,
+      name: admin.name || "운영자",
+    })
     setIsLoading(false)
 
-    // Redirect based on role
-    if (mockUser.user.role === "operator") {
-      router.push("/admin")
-    } else {
-      router.push("/match")
-    }
+    // Redirect to admin dashboard
+    router.push("/admin")
 
     return { success: true }
   }, [router])

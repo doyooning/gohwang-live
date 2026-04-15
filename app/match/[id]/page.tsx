@@ -1,36 +1,16 @@
 import Link from "next/link"
+import { notFound } from "next/navigation"
 import { ChevronLeft } from "lucide-react"
+import { createClient } from "@/lib/supabase/server"
 import { ScoreHeader } from "@/components/match/score-header"
 import { VideoPlayer } from "@/components/match/video-player"
 import { MatchTabs } from "@/components/match/match-tabs"
 
-const matchData: Record<string, {
-  homeTeam: string
-  awayTeam: string
-  homeScore: number
-  awayScore: number
-  matchTime: string
-  status: "live" | "scheduled" | "finished"
-  videoId: string
-}> = {
-  "1": {
-    homeTeam: "FC 서울드림",
-    awayTeam: "인천 유나이티드",
-    homeScore: 3,
-    awayScore: 1,
-    matchTime: "85'",
-    status: "live",
-    videoId: "fpzcH5DhRXU",
-  },
-  "2": {
-    homeTeam: "수원 삼성 블루윙즈",
-    awayTeam: "전북 현대 모터스",
-    homeScore: 2,
-    awayScore: 2,
-    matchTime: "67'",
-    status: "live",
-    videoId: "fpzcH5DhRXU",
-  },
+// Helper to extract YouTube video ID from URL
+function extractYouTubeId(url: string | null): string | undefined {
+  if (!url) return undefined
+  const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/)
+  return match ? match[1] : undefined
 }
 
 export default async function MatchPage({
@@ -39,7 +19,19 @@ export default async function MatchPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const match = matchData[id] || matchData["1"]
+  const supabase = await createClient()
+
+  const { data: match, error } = await supabase
+    .from("matches")
+    .select("*")
+    .eq("id", id)
+    .single()
+
+  if (error || !match) {
+    notFound()
+  }
+
+  const videoId = extractYouTubeId(match.youtube_url)
 
   return (
     <div className="h-screen bg-background overflow-hidden flex flex-col lg:flex-row">
@@ -61,25 +53,25 @@ export default async function MatchPage({
 
         {/* Score Header */}
         <ScoreHeader
-          homeTeam={match.homeTeam}
-          awayTeam={match.awayTeam}
-          homeScore={match.homeScore}
-          awayScore={match.awayScore}
-          matchTime={match.matchTime}
-          status={match.status}
+          homeTeam={match.home_team}
+          awayTeam={match.away_team}
+          homeScore={match.home_score}
+          awayScore={match.away_score}
+          matchTime={match.status === "live" ? "LIVE" : undefined}
+          status={match.status as "live" | "scheduled" | "finished"}
         />
 
         {/* Video Player */}
         <div className="lg:flex-1 lg:flex lg:items-center lg:bg-black">
           <div className="w-full lg:max-h-full">
-            <VideoPlayer videoId={match.videoId} />
+            <VideoPlayer videoId={videoId} />
           </div>
         </div>
       </div>
 
       {/* Right Section: Tabs (Mobile: bottom with scroll, Desktop: right sidebar) */}
       <div className="flex-1 lg:flex-none lg:w-[400px] xl:w-[450px] lg:h-full lg:border-l lg:border-border overflow-hidden">
-        <MatchTabs videoId={match.videoId} />
+        <MatchTabs videoId={videoId} matchId={match.id} />
       </div>
     </div>
   )

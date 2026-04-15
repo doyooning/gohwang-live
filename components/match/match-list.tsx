@@ -1,66 +1,70 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import { createClient } from "@/lib/supabase/client"
 import { MatchCard } from "./match-card"
-
-const sampleMatches = [
-  {
-    id: "1",
-    homeTeam: "FC 서울드림",
-    awayTeam: "인천 유나이티드",
-    homeScore: 3,
-    awayScore: 1,
-    venue: "월드컵경기장 보조구장",
-    status: "live" as const,
-  },
-  {
-    id: "2",
-    homeTeam: "수원 삼성 블루윙즈",
-    awayTeam: "전북 현대 모터스",
-    homeScore: 2,
-    awayScore: 2,
-    venue: "수원 월드컵경기장",
-    status: "live" as const,
-  },
-  {
-    id: "3",
-    homeTeam: "성남 FC",
-    awayTeam: "대구 FC",
-    scheduledTime: "16:00",
-    venue: "탄천종합운동장",
-    status: "scheduled" as const,
-  },
-  {
-    id: "4",
-    homeTeam: "울산 현대",
-    awayTeam: "포항 스틸러스",
-    scheduledTime: "19:00",
-    venue: "울산문수경기장",
-    status: "scheduled" as const,
-  },
-  {
-    id: "5",
-    homeTeam: "강원 FC",
-    awayTeam: "제주 유나이티드",
-    homeScore: 1,
-    awayScore: 0,
-    venue: "춘천송암스포츠타운",
-    status: "finished" as const,
-  },
-  {
-    id: "6",
-    homeTeam: "김천 상무",
-    awayTeam: "광주 FC",
-    homeScore: 0,
-    awayScore: 2,
-    venue: "김천종합스포츠타운",
-    status: "finished" as const,
-  },
-]
+import type { Match } from "@/lib/types"
+import { Loader2 } from "lucide-react"
 
 export function MatchList() {
-  const liveMatches = sampleMatches.filter((m) => m.status === "live")
-  const scheduledMatches = sampleMatches.filter((m) => m.status === "scheduled")
-  const finishedMatches = sampleMatches.filter((m) => m.status === "finished")
+  const [matches, setMatches] = useState<Match[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const supabase = createClient()
+
+    async function fetchMatches() {
+      const { data, error } = await supabase
+        .from("matches")
+        .select("*")
+        .order("match_date", { ascending: false })
+
+      if (error) {
+        console.error("Error fetching matches:", error)
+      } else {
+        setMatches(data || [])
+      }
+      setLoading(false)
+    }
+
+    fetchMatches()
+
+    // Subscribe to realtime updates
+    const channel = supabase
+      .channel("matches-changes")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "matches" },
+        () => {
+          fetchMatches()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="size-6 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  const liveMatches = matches.filter((m) => m.status === "live")
+  const scheduledMatches = matches.filter((m) => m.status === "scheduled")
+  const finishedMatches = matches.filter((m) => m.status === "finished")
+
+  if (matches.length === 0) {
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        등록된 경기가 없습니다
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -72,7 +76,16 @@ export function MatchList() {
           </h2>
           <div className="space-y-3">
             {liveMatches.map((match) => (
-              <MatchCard key={match.id} {...match} />
+              <MatchCard
+                key={match.id}
+                id={match.id}
+                homeTeam={match.home_team}
+                awayTeam={match.away_team}
+                homeScore={match.home_score}
+                awayScore={match.away_score}
+                venue={match.location}
+                status="live"
+              />
             ))}
           </div>
         </section>
@@ -85,7 +98,18 @@ export function MatchList() {
           </h2>
           <div className="space-y-3">
             {scheduledMatches.map((match) => (
-              <MatchCard key={match.id} {...match} />
+              <MatchCard
+                key={match.id}
+                id={match.id}
+                homeTeam={match.home_team}
+                awayTeam={match.away_team}
+                scheduledTime={new Date(match.match_date).toLocaleTimeString("ko-KR", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+                venue={match.location}
+                status="scheduled"
+              />
             ))}
           </div>
         </section>
@@ -98,7 +122,16 @@ export function MatchList() {
           </h2>
           <div className="space-y-3">
             {finishedMatches.map((match) => (
-              <MatchCard key={match.id} {...match} />
+              <MatchCard
+                key={match.id}
+                id={match.id}
+                homeTeam={match.home_team}
+                awayTeam={match.away_team}
+                homeScore={match.home_score}
+                awayScore={match.away_score}
+                venue={match.location}
+                status="finished"
+              />
             ))}
           </div>
         </section>
