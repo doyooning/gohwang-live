@@ -41,12 +41,7 @@ export default function LoginPage() {
         </div>
       </main>
 
-      {/* Bottom: Helper text */}
-      <footer className="py-4 px-4 text-center">
-        <p className="text-xs text-muted-foreground">
-          테스트 계정: operator@example.com / operator123
-        </p>
-      </footer>
+      
     </div>
   )
 }
