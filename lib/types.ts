@@ -20,6 +20,9 @@ export interface MatchEvent {
   player_name: string
   minute: number
   description: string | null
+  assist_player_name: string | null
+  substituted_in_player_name: string | null
+  substituted_out_player_name: string | null
   created_at: string
 }
 
@@ -36,6 +39,7 @@ export interface Lineup {
 export interface Admin {
   id: string
   email: string
-  name: string
+  role: "super_admin" | "operator"
+  is_active: boolean
   created_at: string
 }

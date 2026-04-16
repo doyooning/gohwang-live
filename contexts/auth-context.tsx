@@ -40,11 +40,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .eq("email", authUser.email)
           .single()
 
-        if (admin) {
+        if (admin && admin.is_active) {
           setUser({
             id: admin.id,
             email: admin.email,
-            name: admin.name || "운영자",
+            name: admin.email.split("@")[0],
           })
         }
       }
@@ -64,11 +64,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .eq("email", session.user.email)
           .single()
 
-        if (admin) {
+        if (admin && admin.is_active) {
           setUser({
             id: admin.id,
             email: admin.email,
-            name: admin.name || "운영자",
+            name: admin.email.split("@")[0],
           })
         }
       }
@@ -100,17 +100,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .eq("email", email)
       .single()
 
-    if (adminError || !admin) {
-      // User exists in auth but not in admins table
+    if (adminError || !admin || !admin.is_active) {
+      // User exists in auth but not in admins table or not active
       await supabase.auth.signOut()
       setIsLoading(false)
-      return { success: false, error: "운영자 권한이 없는 계정입니다." }
+      return { success: false, error: "운영자 권한이 없거나 비활성화된 계정입니다." }
     }
 
     setUser({
       id: admin.id,
       email: admin.email,
-      name: admin.name || "운영자",
+      name: admin.email.split("@")[0],
     })
     setIsLoading(false)
 
