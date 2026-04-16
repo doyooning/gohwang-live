@@ -27,6 +27,7 @@ import {
   Loader2,
   Timer,
   CircleDot,
+  Undo2,
 } from "lucide-react"
 import type { Match, MatchEvent, Lineup } from "@/lib/types"
 
@@ -86,6 +87,7 @@ export default function MatchControlPage() {
     extra_start: "",
     extra_end: "",
   })
+  const [lastTimeRecord, setLastTimeRecord] = useState<{ type: TimeType; eventId: string } | null>(null)
 
   // Penalty shootout state
   const [showPenaltyPanel, setShowPenaltyPanel] = useState(false)
@@ -293,14 +295,38 @@ export default function MatchControlPage() {
       extra_end: 120,
     }
 
-    await supabase.from("match_events").insert({
+    const { data: insertedEvent } = await supabase.from("match_events").insert({
       match_id: matchId,
       event_type: "time_record",
       team_side: "home",
       player_name: timeLabels[timeType],
       minute: minuteValues[timeType],
       description: now,
-    })
+    }).select().single()
+
+    if (insertedEvent) {
+      setLastTimeRecord({ type: timeType, eventId: insertedEvent.id })
+    }
+
+    // 이벤트 목록 새로고침
+    const { data } = await supabase
+      .from("match_events")
+      .select("*")
+      .eq("match_id", matchId)
+      .order("minute", { ascending: false })
+      .order("created_at", { ascending: false })
+    if (data) setEvents(data)
+  }
+
+  const handleUndoTimeRecord = async () => {
+    if (!lastTimeRecord) return
+
+    // DB에서 이벤트 삭제
+    await supabase.from("match_events").delete().eq("id", lastTimeRecord.eventId)
+
+    // 로컬 상태 초기화
+    setMatchTimes((prev) => ({ ...prev, [lastTimeRecord.type]: "" }))
+    setLastTimeRecord(null)
 
     // 이벤트 목록 새로고침
     const { data } = await supabase
@@ -562,9 +588,17 @@ export default function MatchControlPage() {
         <div className="px-4 py-4 bg-card border-b border-border">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-foreground">경기 시간 기록</h3>
-            <Button variant="ghost" size="icon" onClick={() => setShowTimePanel(false)}>
-              <X className="size-4" />
-            </Button>
+            <div className="flex items-center gap-2">
+              {lastTimeRecord && (
+                <Button variant="outline" size="sm" onClick={handleUndoTimeRecord}>
+                  <Undo2 className="size-4 mr-1" />
+                  되돌리기
+                </Button>
+              )}
+              <Button variant="ghost" size="icon" onClick={() => setShowTimePanel(false)}>
+                <X className="size-4" />
+              </Button>
+            </div>
           </div>
           <div className="grid grid-cols-3 gap-2">
             {/* 전반 */}
@@ -575,14 +609,14 @@ export default function MatchControlPage() {
                 className="w-full h-10 text-xs"
                 onClick={() => handleSetTime("first_half_start")}
               >
-                {matchTimes.first_half_start || "시작"}
+                {matchTimes.first_half_start ? `시작 : ${matchTimes.first_half_start}` : "시작"}
               </Button>
               <Button
                 variant={matchTimes.first_half_end ? "default" : "outline"}
                 className="w-full h-10 text-xs"
                 onClick={() => handleSetTime("first_half_end")}
               >
-                {matchTimes.first_half_end || "종료"}
+                {matchTimes.first_half_end ? `종료 : ${matchTimes.first_half_end}` : "종료"}
               </Button>
             </div>
             {/* 후반 */}
@@ -593,14 +627,14 @@ export default function MatchControlPage() {
                 className="w-full h-10 text-xs"
                 onClick={() => handleSetTime("second_half_start")}
               >
-                {matchTimes.second_half_start || "시작"}
+                {matchTimes.second_half_start ? `시작 : ${matchTimes.second_half_start}` : "시작"}
               </Button>
               <Button
                 variant={matchTimes.second_half_end ? "default" : "outline"}
                 className="w-full h-10 text-xs"
                 onClick={() => handleSetTime("second_half_end")}
               >
-                {matchTimes.second_half_end || "종료"}
+                {matchTimes.second_half_end ? `종료 : ${matchTimes.second_half_end}` : "종료"}
               </Button>
             </div>
             {/* 연장 */}
@@ -611,14 +645,14 @@ export default function MatchControlPage() {
                 className="w-full h-10 text-xs"
                 onClick={() => handleSetTime("extra_start")}
               >
-                {matchTimes.extra_start || "시작"}
+                {matchTimes.extra_start ? `시작 : ${matchTimes.extra_start}` : "시작"}
               </Button>
               <Button
                 variant={matchTimes.extra_end ? "default" : "outline"}
                 className="w-full h-10 text-xs"
                 onClick={() => handleSetTime("extra_end")}
               >
-                {matchTimes.extra_end || "종료"}
+                {matchTimes.extra_end ? `종료 : ${matchTimes.extra_end}` : "종료"}
               </Button>
             </div>
           </div>
