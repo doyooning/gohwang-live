@@ -54,9 +54,9 @@ export function MatchList() {
     )
   }
 
-  const liveMatches = matches.filter((m) => m.status === "live")
-  const scheduledMatches = matches.filter((m) => m.status === "scheduled")
-  const finishedMatches = matches.filter((m) => m.status === "finished")
+  const liveMatches = matches.filter((m) => m.status.toLowerCase() === "live")
+  const scheduledMatches = matches.filter((m) => m.status.toLowerCase() === "scheduled")
+  const finishedMatches = matches.filter((m) => m.status.toLowerCase() === "finished")
 
   if (matches.length === 0) {
     return (
@@ -84,7 +84,7 @@ export function MatchList() {
                 homeScore={match.home_score}
                 awayScore={match.away_score}
                 venue={match.location}
-                status="live"
+                status={match.status.toLowerCase() as "live" | "scheduled" | "finished"}
               />
             ))}
           </div>
@@ -108,7 +108,7 @@ export function MatchList() {
                   minute: "2-digit",
                 })}
                 venue={match.location}
-                status="scheduled"
+                status={match.status.toLowerCase() as "live" | "scheduled" | "finished"}
               />
             ))}
           </div>
@@ -130,7 +130,7 @@ export function MatchList() {
                 homeScore={match.home_score}
                 awayScore={match.away_score}
                 venue={match.location}
-                status="finished"
+                status={match.status.toLowerCase() as "live" | "scheduled" | "finished"}
               />
             ))}
           </div>

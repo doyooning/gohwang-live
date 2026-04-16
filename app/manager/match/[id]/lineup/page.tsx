@@ -301,7 +301,7 @@ export default function LineupManagementPage() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => router.push(`/admin/match/${matchId}`)}
+            onClick={() => router.push(`/manager/match/${matchId}`)}
           >
             <ArrowLeft className="size-5" />
           </Button>

@@ -61,7 +61,7 @@ export default function AdminPage() {
   }
 
   const getStatusBadge = (status: string) => {
-    switch (status) {
+    switch (status.toLowerCase()) {
       case "live":
         return (
           <Badge className="bg-destructive text-destructive-foreground">
@@ -81,8 +81,8 @@ export default function AdminPage() {
     }
   }
 
-  const liveMatches = matches.filter((m) => m.status === "live")
-  const scheduledMatches = matches.filter((m) => m.status === "scheduled")
+  const liveMatches = matches.filter((m) => m.status.toLowerCase() === "live")
+  const scheduledMatches = matches.filter((m) => m.status.toLowerCase() === "scheduled")
 
   return (
     <div className="min-h-screen bg-background">
@@ -136,7 +136,7 @@ export default function AdminPage() {
               <div
                 key={match.id}
                 className={`bg-card border rounded-lg p-4 ${
-                  match.status === "live"
+                  match.status.toLowerCase() === "live"
                     ? "border-primary/50 shadow-[0_0_10px_rgba(var(--primary),0.15)]"
                     : "border-border"
                 }`}
@@ -153,7 +153,7 @@ export default function AdminPage() {
                     <p className="text-sm font-medium text-foreground truncate">{match.home_team}</p>
                   </div>
                   <div className="px-4">
-                    {match.status === "scheduled" ? (
+                    {match.status.toLowerCase() === "scheduled" ? (
                       <p className="text-lg font-bold text-muted-foreground">
                         {new Date(match.match_date).toLocaleTimeString("ko-KR", {
                           hour: "2-digit",
@@ -174,22 +174,22 @@ export default function AdminPage() {
                 <div className="flex items-center justify-between pt-3 border-t border-border">
                   <p className="text-xs text-muted-foreground">{match.location}</p>
                   <div className="flex items-center gap-2">
-                    {match.status === "live" ? (
+                    {match.status.toLowerCase() === "live" ? (
                       <Button
                         size="sm"
                         className="h-8 gap-1"
-                        onClick={() => router.push(`/admin/match/${match.id}`)}
+                        onClick={() => router.push(`/manager/match/${match.id}`)}
                       >
                         <Settings className="size-3" />
                         관리
                       </Button>
-                    ) : match.status === "scheduled" ? (
+                    ) : match.status.toLowerCase() === "scheduled" ? (
                       <>
                         <Button
                           size="sm"
                           variant="outline"
                           className="h-8 gap-1"
-                          onClick={() => router.push(`/admin/match/${match.id}`)}
+                          onClick={() => router.push(`/manager/match/${match.id}`)}
                         >
                           <Settings className="size-3" />
                           설정
@@ -204,7 +204,7 @@ export default function AdminPage() {
                         size="sm"
                         variant="outline"
                         className="h-8 gap-1"
-                        onClick={() => router.push(`/admin/match/${match.id}`)}
+                        onClick={() => router.push(`/manager/match/${match.id}`)}
                       >
                         <Settings className="size-3" />
                         상세

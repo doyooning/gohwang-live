@@ -25,6 +25,9 @@ import {
   Users,
   Image as ImageIcon,
   Loader2,
+  Timer,
+  CircleDot,
+  Undo2,
 } from "lucide-react"
 import type { Match, MatchEvent, Lineup } from "@/lib/types"
 
@@ -34,6 +37,23 @@ interface Player {
   id: string
   name: string
   number: number
+}
+
+type TimeType = "first_half_start" | "first_half_end" | "second_half_start" | "second_half_end" | "extra_start" | "extra_end"
+
+interface MatchTimes {
+  first_half_start: string
+  first_half_end: string
+  second_half_start: string
+  second_half_end: string
+  extra_start: string
+  extra_end: string
+}
+
+interface PenaltyKick {
+  order: number
+  team: "first" | "second"
+  result: "success" | "fail" | null
 }
 
 export default function MatchControlPage() {
@@ -56,6 +76,23 @@ export default function MatchControlPage() {
   const [selectedAssistPlayer, setSelectedAssistPlayer] = useState("")
   const [cardType, setCardType] = useState<"yellow_card" | "red_card">("yellow_card")
   const [inputMinute, setInputMinute] = useState("")
+
+  // Time section state
+  const [showTimePanel, setShowTimePanel] = useState(false)
+  const [matchTimes, setMatchTimes] = useState<MatchTimes>({
+    first_half_start: "",
+    first_half_end: "",
+    second_half_start: "",
+    second_half_end: "",
+    extra_start: "",
+    extra_end: "",
+  })
+  const [lastTimeRecord, setLastTimeRecord] = useState<{ type: TimeType; eventId: string } | null>(null)
+
+  // Penalty shootout state
+  const [showPenaltyPanel, setShowPenaltyPanel] = useState(false)
+  const [penaltyFirstTeam, setPenaltyFirstTeam] = useState<"home" | "away">("home")
+  const [penaltyKicks, setPenaltyKicks] = useState<PenaltyKick[]>([])
 
   // Auth guard
   useEffect(() => {
@@ -123,6 +160,18 @@ export default function MatchControlPage() {
       supabase.removeChannel(matchChannel)
     }
   }, [matchId])
+
+  // Initialize penalty kicks
+  useEffect(() => {
+    if (penaltyKicks.length === 0) {
+      const initialKicks: PenaltyKick[] = []
+      for (let i = 1; i <= 5; i++) {
+        initialKicks.push({ order: i, team: "first", result: null })
+        initialKicks.push({ order: i, team: "second", result: null })
+      }
+      setPenaltyKicks(initialKicks)
+    }
+  }, [penaltyKicks.length])
 
   const getPlayers = useCallback(
     (team: "home" | "away") => {
@@ -193,6 +242,125 @@ export default function MatchControlPage() {
     resetForm()
   }
 
+  const handleSetTime = async (timeType: TimeType) => {
+    // 순서 검증
+    const timeOrder: TimeType[] = [
+      "first_half_start",
+      "first_half_end",
+      "second_half_start",
+      "second_half_end",
+      "extra_start",
+      "extra_end",
+    ]
+    const currentIndex = timeOrder.indexOf(timeType)
+    
+    // 이전 단계가 완료되었는지 확인
+    for (let i = 0; i < currentIndex; i++) {
+      if (!matchTimes[timeOrder[i]]) {
+        const labels: Record<TimeType, string> = {
+          first_half_start: "전반 시작",
+          first_half_end: "전반 종료",
+          second_half_start: "후반 시작",
+          second_half_end: "후반 종료",
+          extra_start: "연장 시작",
+          extra_end: "연장 종료",
+        }
+        alert(`${labels[timeOrder[i]]}을(를) 먼저 기록해주세요.`)
+        return
+      }
+    }
+
+    const now = new Date().toLocaleTimeString("ko-KR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+    setMatchTimes((prev) => ({ ...prev, [timeType]: now }))
+
+    // 이벤트 타임라인에 기록
+    const timeLabels: Record<TimeType, string> = {
+      first_half_start: "전반 시작",
+      first_half_end: "전반 종료",
+      second_half_start: "후반 시작",
+      second_half_end: "후반 종료",
+      extra_start: "연장 시작",
+      extra_end: "연장 종료",
+    }
+
+    const minuteValues: Record<TimeType, number> = {
+      first_half_start: 0,
+      first_half_end: 45,
+      second_half_start: 45,
+      second_half_end: 90,
+      extra_start: 90,
+      extra_end: 120,
+    }
+
+    const { data: insertedEvent } = await supabase.from("match_events").insert({
+      match_id: matchId,
+      event_type: "time_record",
+      team_side: "home",
+      player_name: timeLabels[timeType],
+      minute: minuteValues[timeType],
+      description: now,
+    }).select().single()
+
+    if (insertedEvent) {
+      setLastTimeRecord({ type: timeType, eventId: insertedEvent.id })
+    }
+
+    // 이벤트 목록 새로고침
+    const { data } = await supabase
+      .from("match_events")
+      .select("*")
+      .eq("match_id", matchId)
+      .order("minute", { ascending: false })
+      .order("created_at", { ascending: false })
+    if (data) setEvents(data)
+  }
+
+  const handleUndoTimeRecord = async () => {
+    if (!lastTimeRecord) return
+
+    // DB에서 이벤트 삭제
+    await supabase.from("match_events").delete().eq("id", lastTimeRecord.eventId)
+
+    // 로컬 상태 초기화
+    setMatchTimes((prev) => ({ ...prev, [lastTimeRecord.type]: "" }))
+    setLastTimeRecord(null)
+
+    // 이벤트 목록 새로고침
+    const { data } = await supabase
+      .from("match_events")
+      .select("*")
+      .eq("match_id", matchId)
+      .order("minute", { ascending: false })
+      .order("created_at", { ascending: false })
+    if (data) setEvents(data)
+  }
+
+  const handlePenaltyResult = (order: number, team: "first" | "second", result: "success" | "fail") => {
+    setPenaltyKicks((prev) =>
+      prev.map((kick) =>
+        kick.order === order && kick.team === team ? { ...kick, result } : kick
+      )
+    )
+  }
+
+  const addPenaltyRound = () => {
+    const maxOrder = Math.max(...penaltyKicks.map((k) => k.order))
+    setPenaltyKicks((prev) => [
+      ...prev,
+      { order: maxOrder + 1, team: "first", result: null },
+      { order: maxOrder + 1, team: "second", result: null },
+    ])
+  }
+
+  const getPenaltyScore = () => {
+    const firstTeamScore = penaltyKicks.filter((k) => k.team === "first" && k.result === "success").length
+    const secondTeamScore = penaltyKicks.filter((k) => k.team === "second" && k.result === "success").length
+    return { first: firstTeamScore, second: secondTeamScore }
+  }
+
   const getEventIcon = (type: string) => {
     switch (type) {
       case "goal":
@@ -203,6 +371,8 @@ export default function MatchControlPage() {
         return <div className="size-3 rounded-sm bg-red-500" />
       case "substitution":
         return <RefreshCw className="size-4" />
+      case "time_record":
+        return <Timer className="size-4" />
       default:
         return null
     }
@@ -222,6 +392,8 @@ export default function MatchControlPage() {
         return event.description
           ? `${event.description} OUT / ${event.player_name} IN`
           : `${event.player_name} IN`
+      case "time_record":
+        return `${event.player_name} (${event.description})`
       default:
         return event.player_name
     }
@@ -239,6 +411,10 @@ export default function MatchControlPage() {
     )
   }
 
+  const penaltyScore = getPenaltyScore()
+  const firstTeamName = penaltyFirstTeam === "home" ? match.home_team : match.away_team
+  const secondTeamName = penaltyFirstTeam === "home" ? match.away_team : match.home_team
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Sticky Header - Score & Controls */}
@@ -246,25 +422,25 @@ export default function MatchControlPage() {
         {/* Top bar */}
         <div className="px-3 py-2 flex items-center justify-between border-b border-border">
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" onClick={() => router.push("/admin")}>
+            <Button variant="ghost" size="icon" onClick={() => router.push("/manager")}>
               <ArrowLeft className="size-5" />
             </Button>
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => router.push(`/admin/match/${matchId}/lineup`)}
+              onClick={() => router.push(`/manager/match/${matchId}/lineup`)}
             >
               <Users className="size-5" />
             </Button>
           </div>
-          <Badge className={match.status === "live" ? "bg-destructive text-destructive-foreground" : "bg-secondary"}>
-            {match.status === "live" && (
+          <Badge className={match.status.toLowerCase() === "live" ? "bg-destructive text-destructive-foreground" : "bg-secondary"}>
+            {match.status.toLowerCase() === "live" && (
               <span className="relative flex size-2 mr-1.5">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive-foreground opacity-75" />
                 <span className="relative inline-flex size-2 rounded-full bg-destructive-foreground" />
               </span>
             )}
-            {match.status === "live" ? "LIVE" : match.status === "scheduled" ? "예정" : "종료"}
+            {match.status.toLowerCase() === "live" ? "LIVE" : match.status.toLowerCase() === "scheduled" ? "예정" : "종료"}
           </Badge>
           <div className="flex items-center gap-2">
             <ImageIcon className="size-4 text-muted-foreground" />
@@ -296,10 +472,31 @@ export default function MatchControlPage() {
               <p className="text-3xl font-bold text-foreground">
                 {match.home_score} : {match.away_score}
               </p>
-              <div className="flex items-center justify-center gap-1 text-primary text-sm font-medium mt-1">
-                <Clock className="size-3" />
-                {match.status === "live" ? "LIVE" : match.status}
-              </div>
+              {match.status.toLowerCase() === "live" && (
+                <div className="flex items-center justify-center gap-1 text-primary text-sm font-medium mt-1">
+                  <Clock className="size-3" />
+                  {(() => {
+                    // 경기 진행 시간 계산
+                    const now = new Date()
+                    if (matchTimes.second_half_start && !matchTimes.second_half_end) {
+                      const start = new Date(matchTimes.second_half_start)
+                      const minutes = Math.floor((now.getTime() - start.getTime()) / 60000) + 45
+                      return `${minutes}'`
+                    } else if (matchTimes.first_half_start && !matchTimes.first_half_end) {
+                      const start = new Date(matchTimes.first_half_start)
+                      const minutes = Math.floor((now.getTime() - start.getTime()) / 60000)
+                      return `${minutes}'`
+                    } else if (matchTimes.first_half_end && !matchTimes.second_half_start) {
+                      return "HT"
+                    } else if (matchTimes.extra_start && !matchTimes.extra_end) {
+                      const start = new Date(matchTimes.extra_start)
+                      const minutes = Math.floor((now.getTime() - start.getTime()) / 60000) + 90
+                      return `${minutes}'`
+                    }
+                    return "LIVE"
+                  })()}
+                </div>
+              )}
             </div>
             <div className="flex-1 text-center">
               <p className="text-sm font-medium text-foreground truncate">
@@ -312,7 +509,7 @@ export default function MatchControlPage() {
 
       {/* Quick Action Buttons */}
       <div className="px-4 py-3 bg-secondary/30 border-b border-border">
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-2 mb-2">
           <Button
             size="lg"
             variant={activePanel === "goal" ? "default" : "secondary"}
@@ -320,6 +517,8 @@ export default function MatchControlPage() {
             onClick={() => {
               resetForm()
               setActivePanel(activePanel === "goal" ? null : "goal")
+              setShowTimePanel(false)
+              setShowPenaltyPanel(false)
             }}
           >
             <Goal className="size-5" />
@@ -332,6 +531,8 @@ export default function MatchControlPage() {
             onClick={() => {
               resetForm()
               setActivePanel(activePanel === "yellow_card" || activePanel === "red_card" ? null : "yellow_card")
+              setShowTimePanel(false)
+              setShowPenaltyPanel(false)
             }}
           >
             <Square className="size-5" />
@@ -344,13 +545,225 @@ export default function MatchControlPage() {
             onClick={() => {
               resetForm()
               setActivePanel(activePanel === "substitution" ? null : "substitution")
+              setShowTimePanel(false)
+              setShowPenaltyPanel(false)
             }}
           >
             <RefreshCw className="size-5" />
             <span className="text-xs">교체 추가</span>
           </Button>
         </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            size="lg"
+            variant={showTimePanel ? "default" : "secondary"}
+            className="h-12 flex-col gap-1"
+            onClick={() => {
+              resetForm()
+              setShowTimePanel(!showTimePanel)
+              setShowPenaltyPanel(false)
+            }}
+          >
+            <Timer className="size-5" />
+            <span className="text-xs">시간 입력</span>
+          </Button>
+          <Button
+            size="lg"
+            variant={showPenaltyPanel ? "default" : "secondary"}
+            className="h-12 flex-col gap-1"
+            onClick={() => {
+              resetForm()
+              setShowPenaltyPanel(!showPenaltyPanel)
+              setShowTimePanel(false)
+            }}
+          >
+            <CircleDot className="size-5" />
+            <span className="text-xs">승부차기</span>
+          </Button>
+        </div>
       </div>
+
+      {/* Time Input Panel */}
+      {showTimePanel && (
+        <div className="px-4 py-4 bg-card border-b border-border">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-foreground">경기 시간 기록</h3>
+            <div className="flex items-center gap-2">
+              {lastTimeRecord && (
+                <Button variant="outline" size="sm" onClick={handleUndoTimeRecord}>
+                  <Undo2 className="size-4 mr-1" />
+                  되돌리기
+                </Button>
+              )}
+              <Button variant="ghost" size="icon" onClick={() => setShowTimePanel(false)}>
+                <X className="size-4" />
+              </Button>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {/* 전반 */}
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground font-medium text-center">전반</p>
+              <Button
+                variant={matchTimes.first_half_start ? "default" : "outline"}
+                className="w-full h-10 text-xs"
+                onClick={() => handleSetTime("first_half_start")}
+              >
+                {matchTimes.first_half_start ? `시작 : ${matchTimes.first_half_start}` : "시작"}
+              </Button>
+              <Button
+                variant={matchTimes.first_half_end ? "default" : "outline"}
+                className="w-full h-10 text-xs"
+                onClick={() => handleSetTime("first_half_end")}
+              >
+                {matchTimes.first_half_end ? `종료 : ${matchTimes.first_half_end}` : "종료"}
+              </Button>
+            </div>
+            {/* 후반 */}
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground font-medium text-center">후반</p>
+              <Button
+                variant={matchTimes.second_half_start ? "default" : "outline"}
+                className="w-full h-10 text-xs"
+                onClick={() => handleSetTime("second_half_start")}
+              >
+                {matchTimes.second_half_start ? `시작 : ${matchTimes.second_half_start}` : "시작"}
+              </Button>
+              <Button
+                variant={matchTimes.second_half_end ? "default" : "outline"}
+                className="w-full h-10 text-xs"
+                onClick={() => handleSetTime("second_half_end")}
+              >
+                {matchTimes.second_half_end ? `종료 : ${matchTimes.second_half_end}` : "종료"}
+              </Button>
+            </div>
+            {/* 연장 */}
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground font-medium text-center">연장</p>
+              <Button
+                variant={matchTimes.extra_start ? "default" : "outline"}
+                className="w-full h-10 text-xs"
+                onClick={() => handleSetTime("extra_start")}
+              >
+                {matchTimes.extra_start ? `시작 : ${matchTimes.extra_start}` : "시작"}
+              </Button>
+              <Button
+                variant={matchTimes.extra_end ? "default" : "outline"}
+                className="w-full h-10 text-xs"
+                onClick={() => handleSetTime("extra_end")}
+              >
+                {matchTimes.extra_end ? `종료 : ${matchTimes.extra_end}` : "종료"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Penalty Shootout Panel */}
+      {showPenaltyPanel && (
+        <div className="px-4 py-4 bg-card border-b border-border">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-foreground">승부차기 기록</h3>
+            <Button variant="ghost" size="icon" onClick={() => setShowPenaltyPanel(false)}>
+              <X className="size-4" />
+            </Button>
+          </div>
+
+          {/* First kick team selection */}
+          <div className="mb-4">
+            <p className="text-xs text-muted-foreground font-medium mb-2">선공 팀</p>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant={penaltyFirstTeam === "home" ? "default" : "outline"}
+                className="h-10"
+                onClick={() => setPenaltyFirstTeam("home")}
+              >
+                {match.home_team}
+              </Button>
+              <Button
+                variant={penaltyFirstTeam === "away" ? "default" : "outline"}
+                className="h-10"
+                onClick={() => setPenaltyFirstTeam("away")}
+              >
+                {match.away_team}
+              </Button>
+            </div>
+          </div>
+
+          {/* Score display */}
+          <div className="flex items-center justify-center gap-4 mb-4 py-3 bg-secondary/30 rounded-lg">
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground mb-1">{firstTeamName} (선공)</p>
+              <p className="text-2xl font-bold text-primary">{penaltyScore.first}</p>
+            </div>
+            <span className="text-xl font-bold text-muted-foreground">:</span>
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground mb-1">{secondTeamName} (후공)</p>
+              <p className="text-2xl font-bold text-primary">{penaltyScore.second}</p>
+            </div>
+          </div>
+
+          {/* Penalty kicks table */}
+          <div className="space-y-2 max-h-60 overflow-y-auto">
+            {Array.from(new Set(penaltyKicks.map((k) => k.order))).map((order) => {
+              const firstKick = penaltyKicks.find((k) => k.order === order && k.team === "first")
+              const secondKick = penaltyKicks.find((k) => k.order === order && k.team === "second")
+
+              return (
+                <div key={order} className="flex items-center gap-2 py-2 border-b border-border last:border-b-0">
+                  <span className="text-xs text-muted-foreground w-8 text-center">{order}번</span>
+
+                  {/* First team kick */}
+                  <div className="flex-1 flex gap-1">
+                    <Button
+                      size="sm"
+                      variant={firstKick?.result === "success" ? "default" : "outline"}
+                      className={`flex-1 h-9 ${firstKick?.result === "success" ? "bg-primary" : ""}`}
+                      onClick={() => handlePenaltyResult(order, "first", "success")}
+                    >
+                      O
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={firstKick?.result === "fail" ? "destructive" : "outline"}
+                      className="flex-1 h-9"
+                      onClick={() => handlePenaltyResult(order, "first", "fail")}
+                    >
+                      X
+                    </Button>
+                  </div>
+
+                  <span className="text-xs text-muted-foreground">vs</span>
+
+                  {/* Second team kick */}
+                  <div className="flex-1 flex gap-1">
+                    <Button
+                      size="sm"
+                      variant={secondKick?.result === "success" ? "default" : "outline"}
+                      className={`flex-1 h-9 ${secondKick?.result === "success" ? "bg-primary" : ""}`}
+                      onClick={() => handlePenaltyResult(order, "second", "success")}
+                    >
+                      O
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={secondKick?.result === "fail" ? "destructive" : "outline"}
+                      className="flex-1 h-9"
+                      onClick={() => handlePenaltyResult(order, "second", "fail")}
+                    >
+                      X
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          <Button variant="outline" className="w-full mt-3" onClick={addPenaltyRound}>
+            라운드 추가
+          </Button>
+        </div>
+      )}
 
       {/* Input Panel */}
       {activePanel && (
