@@ -240,12 +240,76 @@ export default function MatchControlPage() {
     resetForm()
   }
 
-  const handleSetTime = (timeType: TimeType) => {
+  const handleSetTime = async (timeType: TimeType) => {
+    // 순서 검증
+    const timeOrder: TimeType[] = [
+      "first_half_start",
+      "first_half_end",
+      "second_half_start",
+      "second_half_end",
+      "extra_start",
+      "extra_end",
+    ]
+    const currentIndex = timeOrder.indexOf(timeType)
+    
+    // 이전 단계가 완료되었는지 확인
+    for (let i = 0; i < currentIndex; i++) {
+      if (!matchTimes[timeOrder[i]]) {
+        const labels: Record<TimeType, string> = {
+          first_half_start: "전반 시작",
+          first_half_end: "전반 종료",
+          second_half_start: "후반 시작",
+          second_half_end: "후반 종료",
+          extra_start: "연장 시작",
+          extra_end: "연장 종료",
+        }
+        alert(`${labels[timeOrder[i]]}을(를) 먼저 기록해주세요.`)
+        return
+      }
+    }
+
     const now = new Date().toLocaleTimeString("ko-KR", {
       hour: "2-digit",
       minute: "2-digit",
     })
     setMatchTimes((prev) => ({ ...prev, [timeType]: now }))
+
+    // 이벤트 타임라인에 기록
+    const timeLabels: Record<TimeType, string> = {
+      first_half_start: "전반 시작",
+      first_half_end: "전반 종료",
+      second_half_start: "후반 시작",
+      second_half_end: "후반 종료",
+      extra_start: "연장 시작",
+      extra_end: "연장 종료",
+    }
+
+    const minuteValues: Record<TimeType, number> = {
+      first_half_start: 0,
+      first_half_end: 45,
+      second_half_start: 45,
+      second_half_end: 90,
+      extra_start: 90,
+      extra_end: 120,
+    }
+
+    await supabase.from("match_events").insert({
+      match_id: matchId,
+      event_type: "time_record",
+      team_side: "home",
+      player_name: timeLabels[timeType],
+      minute: minuteValues[timeType],
+      description: now,
+    })
+
+    // 이벤트 목록 새로고침
+    const { data } = await supabase
+      .from("match_events")
+      .select("*")
+      .eq("match_id", matchId)
+      .order("minute", { ascending: false })
+      .order("created_at", { ascending: false })
+    if (data) setEvents(data)
   }
 
   const handlePenaltyResult = (order: number, team: "first" | "second", result: "success" | "fail") => {
@@ -281,6 +345,8 @@ export default function MatchControlPage() {
         return <div className="size-3 rounded-sm bg-red-500" />
       case "substitution":
         return <RefreshCw className="size-4" />
+      case "time_record":
+        return <Timer className="size-4" />
       default:
         return null
     }
@@ -300,6 +366,8 @@ export default function MatchControlPage() {
         return event.description
           ? `${event.description} OUT / ${event.player_name} IN`
           : `${event.player_name} IN`
+      case "time_record":
+        return `${event.player_name} (${event.description})`
       default:
         return event.player_name
     }
@@ -498,83 +566,60 @@ export default function MatchControlPage() {
               <X className="size-4" />
             </Button>
           </div>
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground font-medium">전반</p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    className="flex-1 h-12 flex-col"
-                    onClick={() => handleSetTime("first_half_start")}
-                  >
-                    <span className="text-xs">시작</span>
-                    <span className="text-sm font-bold text-primary">
-                      {matchTimes.first_half_start || "--:--"}
-                    </span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="flex-1 h-12 flex-col"
-                    onClick={() => handleSetTime("first_half_end")}
-                  >
-                    <span className="text-xs">종료</span>
-                    <span className="text-sm font-bold text-primary">
-                      {matchTimes.first_half_end || "--:--"}
-                    </span>
-                  </Button>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground font-medium">후반</p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    className="flex-1 h-12 flex-col"
-                    onClick={() => handleSetTime("second_half_start")}
-                  >
-                    <span className="text-xs">시작</span>
-                    <span className="text-sm font-bold text-primary">
-                      {matchTimes.second_half_start || "--:--"}
-                    </span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="flex-1 h-12 flex-col"
-                    onClick={() => handleSetTime("second_half_end")}
-                  >
-                    <span className="text-xs">종료</span>
-                    <span className="text-sm font-bold text-primary">
-                      {matchTimes.second_half_end || "--:--"}
-                    </span>
-                  </Button>
-                </div>
-              </div>
+          <div className="grid grid-cols-3 gap-2">
+            {/* 전반 */}
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground font-medium text-center">전반</p>
+              <Button
+                variant={matchTimes.first_half_start ? "default" : "outline"}
+                className="w-full h-10 text-xs"
+                onClick={() => handleSetTime("first_half_start")}
+              >
+                {matchTimes.first_half_start || "시작"}
+              </Button>
+              <Button
+                variant={matchTimes.first_half_end ? "default" : "outline"}
+                className="w-full h-10 text-xs"
+                onClick={() => handleSetTime("first_half_end")}
+              >
+                {matchTimes.first_half_end || "종료"}
+              </Button>
             </div>
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground font-medium">연장전</p>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  className="flex-1 h-12 flex-col"
-                  onClick={() => handleSetTime("extra_start")}
-                >
-                  <span className="text-xs">시작</span>
-                  <span className="text-sm font-bold text-primary">
-                    {matchTimes.extra_start || "--:--"}
-                  </span>
-                </Button>
-                <Button
-                  variant="outline"
-                  className="flex-1 h-12 flex-col"
-                  onClick={() => handleSetTime("extra_end")}
-                >
-                  <span className="text-xs">종료</span>
-                  <span className="text-sm font-bold text-primary">
-                    {matchTimes.extra_end || "--:--"}
-                  </span>
-                </Button>
-              </div>
+            {/* 후반 */}
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground font-medium text-center">후반</p>
+              <Button
+                variant={matchTimes.second_half_start ? "default" : "outline"}
+                className="w-full h-10 text-xs"
+                onClick={() => handleSetTime("second_half_start")}
+              >
+                {matchTimes.second_half_start || "시작"}
+              </Button>
+              <Button
+                variant={matchTimes.second_half_end ? "default" : "outline"}
+                className="w-full h-10 text-xs"
+                onClick={() => handleSetTime("second_half_end")}
+              >
+                {matchTimes.second_half_end || "종료"}
+              </Button>
+            </div>
+            {/* 연장 */}
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground font-medium text-center">연장</p>
+              <Button
+                variant={matchTimes.extra_start ? "default" : "outline"}
+                className="w-full h-10 text-xs"
+                onClick={() => handleSetTime("extra_start")}
+              >
+                {matchTimes.extra_start || "시작"}
+              </Button>
+              <Button
+                variant={matchTimes.extra_end ? "default" : "outline"}
+                className="w-full h-10 text-xs"
+                onClick={() => handleSetTime("extra_end")}
+              >
+                {matchTimes.extra_end || "종료"}
+              </Button>
             </div>
           </div>
         </div>
