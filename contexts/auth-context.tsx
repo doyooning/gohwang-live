@@ -115,7 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(false)
 
     // Redirect to admin dashboard
-    router.push("/admin")
+    router.push("/manager")
 
     return { success: true }
   }, [router])
