@@ -14,10 +14,14 @@ export function MatchList() {
     const supabase = createClient()
 
     async function fetchMatches() {
+      console.log("[v0] Fetching matches from Supabase...")
       const { data, error } = await supabase
         .from("matches")
         .select("*")
         .order("match_date", { ascending: false })
+
+      console.log("[v0] Matches data:", data)
+      console.log("[v0] Matches error:", error)
 
       if (error) {
         console.error("Error fetching matches:", error)
