@@ -381,7 +381,26 @@ export default function MatchControlPage() {
               {match.status.toLowerCase() === "live" && (
                 <div className="flex items-center justify-center gap-1 text-primary text-sm font-medium mt-1">
                   <Clock className="size-3" />
-                  LIVE
+                  {(() => {
+                    // 경기 진행 시간 계산
+                    const now = new Date()
+                    if (matchTimes.second_half_start && !matchTimes.second_half_end) {
+                      const start = new Date(matchTimes.second_half_start)
+                      const minutes = Math.floor((now.getTime() - start.getTime()) / 60000) + 45
+                      return `${minutes}'`
+                    } else if (matchTimes.first_half_start && !matchTimes.first_half_end) {
+                      const start = new Date(matchTimes.first_half_start)
+                      const minutes = Math.floor((now.getTime() - start.getTime()) / 60000)
+                      return `${minutes}'`
+                    } else if (matchTimes.first_half_end && !matchTimes.second_half_start) {
+                      return "HT"
+                    } else if (matchTimes.extra_start && !matchTimes.extra_end) {
+                      const start = new Date(matchTimes.extra_start)
+                      const minutes = Math.floor((now.getTime() - start.getTime()) / 60000) + 90
+                      return `${minutes}'`
+                    }
+                    return "LIVE"
+                  })()}
                 </div>
               )}
             </div>
