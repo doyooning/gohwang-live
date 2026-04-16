@@ -378,10 +378,12 @@ export default function MatchControlPage() {
               <p className="text-3xl font-bold text-foreground">
                 {match.home_score} : {match.away_score}
               </p>
-              <div className="flex items-center justify-center gap-1 text-primary text-sm font-medium mt-1">
-                <Clock className="size-3" />
-                {match.status.toLowerCase() === "live" ? "LIVE" : match.status}
-              </div>
+              {match.status.toLowerCase() === "live" && (
+                <div className="flex items-center justify-center gap-1 text-primary text-sm font-medium mt-1">
+                  <Clock className="size-3" />
+                  LIVE
+                </div>
+              )}
             </div>
             <div className="flex-1 text-center">
               <p className="text-sm font-medium text-foreground truncate">
