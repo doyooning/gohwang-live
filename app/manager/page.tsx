@@ -1,8 +1,8 @@
-"use client"
+﻿"use client"
 
 import { useAuth } from "@/contexts/auth-context"
 import { useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -68,8 +68,25 @@ const initialFormData: MatchFormData = {
   youtube_url: "",
 }
 
+async function withTimeout<T>(
+  promise: PromiseLike<T>,
+  ms: number,
+  label: string
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+  })
+
+  try {
+    return await Promise.race([Promise.resolve(promise), timeoutPromise])
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId)
+  }
+}
+
 export default function AdminPage() {
-  const { user, logout } = useAuth()
+  const { user, logout, isLoading } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
   const [matches, setMatches] = useState<Match[]>([])
@@ -84,9 +101,10 @@ export default function AdminPage() {
   const [formData, setFormData] = useState<MatchFormData>(initialFormData)
   const [isSaving, setIsSaving] = useState(false)
 
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
 
   useEffect(() => {
+    if (isLoading) return
     if (!user) {
       router.push("/login")
       return
@@ -132,7 +150,7 @@ export default function AdminPage() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [user, router, supabase])
+  }, [isLoading, user, router, supabase])
 
   const handleCreateMatch = async () => {
     if (!formData.title || !formData.home_team_id || !formData.away_team_id || !formData.match_date || !formData.match_time) {
@@ -144,39 +162,71 @@ export default function AdminPage() {
       return
     }
 
-    setIsSaving(true)
-
     const matchDateTime = new Date(`${formData.match_date}T${formData.match_time}`)
+    if (Number.isNaN(matchDateTime.getTime())) {
+      toast({
+        title: "경기 생성 실패",
+        description: "날짜/시간 형식이 올바르지 않습니다.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (formData.home_team_id === formData.away_team_id) {
+      toast({
+        title: "경기 생성 실패",
+        description: "홈팀과 원정팀은 서로 다른 팀이어야 합니다.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsSaving(true)
     const homeTeam = teams.find((t) => t.id === formData.home_team_id)
     const awayTeam = teams.find((t) => t.id === formData.away_team_id)
 
-    const { error } = await supabase.from("matches").insert({
-      title: formData.title,
-      home_team_id: formData.home_team_id,
-      away_team_id: formData.away_team_id,
-      match_date: matchDateTime.toISOString(),
-      location: formData.location || null,
-      youtube_url: formData.youtube_url || null,
-      status: "SCHEDULED",
-      home_score: 0,
-      away_score: 0,
-    })
+    try {
+      const { error } = await withTimeout(
+        Promise.resolve(
+          supabase.from("matches").insert({
+            title: formData.title,
+            home_team_id: formData.home_team_id,
+            away_team_id: formData.away_team_id,
+            match_date: matchDateTime.toISOString(),
+            location: formData.location || null,
+            youtube_url: formData.youtube_url || null,
+            status: "SCHEDULED",
+            home_score: 0,
+            away_score: 0,
+          })
+        ),
+        15000,
+        "create match"
+      )
 
-    setIsSaving(false)
-
-    if (error) {
+      if (error) {
+        toast({
+          title: "경기 생성 실패",
+          description: error.message,
+          variant: "destructive",
+        })
+      } else {
+        toast({
+          title: "경기가 생성되었습니다",
+          description: `${homeTeam?.name || "홈팀"} vs ${awayTeam?.name || "원정팀"}`,
+        })
+        setIsCreateDialogOpen(false)
+        setFormData(initialFormData)
+      }
+    } catch (error) {
+      console.error("Error creating match:", error)
       toast({
         title: "경기 생성 실패",
-        description: error.message,
+        description: error instanceof Error ? error.message : "잠시 후 다시 시도해주세요.",
         variant: "destructive",
       })
-    } else {
-      toast({
-        title: "경기가 생성되었습니다",
-        description: `${homeTeam?.name || "홈팀"} vs ${awayTeam?.name || "원정팀"}`,
-      })
-      setIsCreateDialogOpen(false)
-      setFormData(initialFormData)
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -315,6 +365,14 @@ export default function AdminPage() {
     if (!teamId) return fallback || "미지정"
     const team = teams.find((t) => t.id === teamId)
     return team?.name || fallback || "미지정"
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="size-8 animate-spin text-primary" />
+      </div>
+    )
   }
 
   if (!user) {

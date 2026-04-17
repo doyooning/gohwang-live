@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useAuth } from "@/contexts/auth-context"
 import { useRouter, useParams } from "next/navigation"
@@ -47,7 +47,7 @@ interface LineupPlayer {
 const FORMATIONS: Formation[] = ["4-3-3", "4-2-3-1", "3-4-3"]
 
 export default function LineupManagementPage() {
-  const { user } = useAuth()
+  const { user, isLoading } = useAuth()
   const router = useRouter()
   const params = useParams()
   const matchId = params.id as string
@@ -77,12 +77,14 @@ export default function LineupManagementPage() {
   const [alertTitle, setAlertTitle] = useState("")
 
   useEffect(() => {
+    if (isLoading) return
     if (!user) {
       router.push("/login")
     }
-  }, [user, router])
+  }, [isLoading, user, router])
 
   useEffect(() => {
+    if (isLoading || !user) return
     async function fetchData() {
       // Fetch match
       const { data: matchData } = await supabase
@@ -176,7 +178,7 @@ export default function LineupManagementPage() {
     }
 
     fetchData()
-  }, [matchId, supabase])
+  }, [isLoading, user, matchId, supabase])
 
   const currentPlayers = lineupPlayers[activeTeam]
   const currentTeamPlayers = teamPlayers[activeTeam]

@@ -53,7 +53,7 @@ const POSITIONS: { value: Position; label: string }[] = [
 ]
 
 export default function TeamsPage() {
-  const { user } = useAuth()
+  const { user, isLoading } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
   const supabase = createClient()
@@ -81,12 +81,13 @@ export default function TeamsPage() {
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
+    if (isLoading) return
     if (!user) {
       router.push("/login")
       return
     }
     fetchTeams()
-  }, [user, router])
+  }, [isLoading, user, router])
 
   const fetchTeams = async () => {
     const { data, error } = await supabase
@@ -297,6 +298,14 @@ export default function TeamsPage() {
       default:
         return "bg-secondary text-muted-foreground"
     }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="size-8 animate-spin text-primary" />
+      </div>
+    )
   }
 
   if (!user) return null

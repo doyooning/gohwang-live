@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/contexts/auth-context"
 import { useRouter, useParams } from "next/navigation"
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useMemo } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -58,10 +58,11 @@ interface PenaltyKick {
 }
 
 export default function MatchControlPage() {
-  const { user } = useAuth()
+  const { user, isLoading } = useAuth()
   const router = useRouter()
   const params = useParams()
   const matchId = params.id as string
+  const supabase = useMemo(() => createClient(), [])
 
   const [match, setMatch] = useState<Match | null>(null)
   const [events, setEvents] = useState<MatchEvent[]>([])
@@ -101,14 +102,15 @@ export default function MatchControlPage() {
 
   // Auth guard
   useEffect(() => {
+    if (isLoading) return
     if (!user) {
       router.push("/login")
     }
-  }, [user, router])
+  }, [isLoading, user, router])
 
   // Fetch data
   useEffect(() => {
-    const supabase = createClient()
+    if (isLoading || !user) return
 
     async function fetchData() {
       const [matchResult, eventsResult, lineupsResult] = await Promise.all([
@@ -176,7 +178,7 @@ export default function MatchControlPage() {
       supabase.removeChannel(eventsChannel)
       supabase.removeChannel(matchChannel)
     }
-  }, [matchId])
+  }, [isLoading, user, matchId, supabase])
 
   // Initialize penalty kicks
   useEffect(() => {
