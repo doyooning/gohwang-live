@@ -30,6 +30,7 @@ import {
   Undo2,
 } from "lucide-react"
 import type { Match, MatchEvent, Lineup } from "@/lib/types"
+import { useToast } from "@/hooks/use-toast"
 
 type EventType = "goal" | "yellow_card" | "red_card" | "substitution"
 
@@ -67,6 +68,7 @@ export default function MatchControlPage() {
   const [players, setPlayers] = useState<{ home: Player[]; away: Player[] }>({ home: [], away: [] })
   const [loading, setLoading] = useState(true)
   const [showThumbnail, setShowThumbnail] = useState(false)
+  const { toast } = useToast()
 
   // Input panel state
   const [activePanel, setActivePanel] = useState<EventType | null>(null)
@@ -267,7 +269,11 @@ export default function MatchControlPage() {
           extra_start: "연장 시작",
           extra_end: "연장 종료",
         }
-        alert(`${labels[timeOrder[i]]}을(를) 먼저 기록해주세요.`)
+        toast({
+          title: "순서 오류",
+          description: `${labels[timeOrder[i]]}을(를) 먼저 기록해주세요.`,
+          variant: "destructive",
+        })
         return
       }
     }
