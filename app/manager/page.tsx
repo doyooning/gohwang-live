@@ -39,12 +39,19 @@ import {
   Pencil,
   Trash2,
 } from "lucide-react"
-import type { Match } from "@/lib/types"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import type { Match, Team } from "@/lib/types"
 
 interface MatchFormData {
   title: string
-  home_team: string
-  away_team: string
+  home_team_id: string
+  away_team_id: string
   match_date: string
   match_time: string
   location: string
@@ -53,8 +60,8 @@ interface MatchFormData {
 
 const initialFormData: MatchFormData = {
   title: "",
-  home_team: "",
-  away_team: "",
+  home_team_id: "",
+  away_team_id: "",
   match_date: "",
   match_time: "",
   location: "",
@@ -66,6 +73,7 @@ export default function AdminPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [matches, setMatches] = useState<Match[]>([])
+  const [teams, setTeams] = useState<Team[]>([])
   const [loading, setLoading] = useState(true)
 
   // Dialog states
@@ -98,7 +106,16 @@ export default function AdminPage() {
       setLoading(false)
     }
 
+    async function fetchTeams() {
+      const { data } = await supabase
+        .from("teams")
+        .select("*")
+        .order("name", { ascending: true })
+      if (data) setTeams(data)
+    }
+
     fetchMatches()
+    fetchTeams()
 
     // Subscribe to realtime updates
     const channel = supabase
@@ -118,7 +135,7 @@ export default function AdminPage() {
   }, [user, router, supabase])
 
   const handleCreateMatch = async () => {
-    if (!formData.title || !formData.home_team || !formData.away_team || !formData.match_date || !formData.match_time) {
+    if (!formData.title || !formData.home_team_id || !formData.away_team_id || !formData.match_date || !formData.match_time) {
       toast({
         title: "필수 항목을 입력해주세요",
         description: "경기명, 홈팀, 원정팀, 날짜, 시간은 필수입니다.",
@@ -130,11 +147,13 @@ export default function AdminPage() {
     setIsSaving(true)
 
     const matchDateTime = new Date(`${formData.match_date}T${formData.match_time}`)
+    const homeTeam = teams.find((t) => t.id === formData.home_team_id)
+    const awayTeam = teams.find((t) => t.id === formData.away_team_id)
 
     const { error } = await supabase.from("matches").insert({
       title: formData.title,
-      home_team: formData.home_team,
-      away_team: formData.away_team,
+      home_team_id: formData.home_team_id,
+      away_team_id: formData.away_team_id,
       match_date: matchDateTime.toISOString(),
       location: formData.location || null,
       youtube_url: formData.youtube_url || null,
@@ -154,7 +173,7 @@ export default function AdminPage() {
     } else {
       toast({
         title: "경기가 생성되었습니다",
-        description: `${formData.home_team} vs ${formData.away_team}`,
+        description: `${homeTeam?.name || "홈팀"} vs ${awayTeam?.name || "원정팀"}`,
       })
       setIsCreateDialogOpen(false)
       setFormData(initialFormData)
@@ -164,7 +183,7 @@ export default function AdminPage() {
   const handleEditMatch = async () => {
     if (!selectedMatch) return
 
-    if (!formData.title || !formData.home_team || !formData.away_team || !formData.match_date || !formData.match_time) {
+    if (!formData.title || !formData.home_team_id || !formData.away_team_id || !formData.match_date || !formData.match_time) {
       toast({
         title: "필수 항목을 입력해주세요",
         description: "경기명, 홈팀, 원정팀, 날짜, 시간은 필수입니다.",
@@ -176,13 +195,15 @@ export default function AdminPage() {
     setIsSaving(true)
 
     const matchDateTime = new Date(`${formData.match_date}T${formData.match_time}`)
+    const homeTeam = teams.find((t) => t.id === formData.home_team_id)
+    const awayTeam = teams.find((t) => t.id === formData.away_team_id)
 
     const { error } = await supabase
       .from("matches")
       .update({
         title: formData.title,
-        home_team: formData.home_team,
-        away_team: formData.away_team,
+        home_team_id: formData.home_team_id,
+        away_team_id: formData.away_team_id,
         match_date: matchDateTime.toISOString(),
         location: formData.location || null,
         youtube_url: formData.youtube_url || null,
@@ -200,7 +221,7 @@ export default function AdminPage() {
     } else {
       toast({
         title: "경기가 수정되었습니다",
-        description: `${formData.home_team} vs ${formData.away_team}`,
+        description: `${homeTeam?.name || "홈팀"} vs ${awayTeam?.name || "원정팀"}`,
       })
       setIsEditDialogOpen(false)
       setSelectedMatch(null)
@@ -215,11 +236,21 @@ export default function AdminPage() {
 
     // Delete related data first
     await supabase.from("match_events").delete().eq("match_id", selectedMatch.id)
-    await supabase.from("lineups").delete().eq("match_id", selectedMatch.id)
+    // Delete lineup players first, then lineups
+    const { data: lineups } = await supabase.from("match_lineups").select("id").eq("match_id", selectedMatch.id)
+    if (lineups) {
+      for (const lineup of lineups) {
+        await supabase.from("match_lineup_players").delete().eq("match_lineup_id", lineup.id)
+      }
+    }
+    await supabase.from("match_lineups").delete().eq("match_id", selectedMatch.id)
 
     const { error } = await supabase.from("matches").delete().eq("id", selectedMatch.id)
 
     setIsSaving(false)
+
+    const homeTeam = teams.find((t) => t.id === selectedMatch.home_team_id)
+    const awayTeam = teams.find((t) => t.id === selectedMatch.away_team_id)
 
     if (error) {
       toast({
@@ -230,7 +261,7 @@ export default function AdminPage() {
     } else {
       toast({
         title: "경기가 삭제되었습니다",
-        description: `${selectedMatch.home_team} vs ${selectedMatch.away_team}`,
+        description: `${homeTeam?.name || selectedMatch.home_team || "홈팀"} vs ${awayTeam?.name || selectedMatch.away_team || "원정팀"}`,
       })
       setIsDeleteDialogOpen(false)
       setSelectedMatch(null)
@@ -242,8 +273,8 @@ export default function AdminPage() {
     setSelectedMatch(match)
     setFormData({
       title: match.title || "",
-      home_team: match.home_team,
-      away_team: match.away_team,
+      home_team_id: match.home_team_id || "",
+      away_team_id: match.away_team_id || "",
       match_date: matchDate.toISOString().split("T")[0],
       match_time: matchDate.toTimeString().slice(0, 5),
       location: match.location || "",
@@ -263,6 +294,9 @@ export default function AdminPage() {
       .update({ status: "LIVE" })
       .eq("id", match.id)
 
+    const homeTeam = teams.find((t) => t.id === match.home_team_id)
+    const awayTeam = teams.find((t) => t.id === match.away_team_id)
+
     if (error) {
       toast({
         title: "경기 시작 실패",
@@ -272,9 +306,15 @@ export default function AdminPage() {
     } else {
       toast({
         title: "경기가 시작되었습니다",
-        description: `${match.home_team} vs ${match.away_team}`,
+        description: `${homeTeam?.name || match.home_team || "홈팀"} vs ${awayTeam?.name || match.away_team || "원정팀"}`,
       })
     }
+  }
+
+  const getTeamName = (teamId: string | null | undefined, fallback?: string) => {
+    if (!teamId) return fallback || "미지정"
+    const team = teams.find((t) => t.id === teamId)
+    return team?.name || fallback || "미지정"
   }
 
   if (!user) {
@@ -314,9 +354,15 @@ export default function AdminPage() {
             <h1 className="text-lg font-bold text-foreground">운영자 대시보드</h1>
             <p className="text-xs text-muted-foreground">{user.name}님 환영합니다</p>
           </div>
-          <Button variant="ghost" size="icon" onClick={logout}>
-            <LogOut className="size-5" />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => router.push("/manager/teams")}>
+              <Users className="size-4 mr-1" />
+              팀 관리
+            </Button>
+            <Button variant="ghost" size="icon" onClick={logout}>
+              <LogOut className="size-5" />
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -382,7 +428,7 @@ export default function AdminPage() {
 
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex-1 text-center">
-                    <p className="text-sm font-medium text-foreground truncate">{match.home_team}</p>
+                    <p className="text-sm font-medium text-foreground truncate">{getTeamName(match.home_team_id, match.home_team)}</p>
                   </div>
                   <div className="px-4">
                     {match.status.toLowerCase() === "scheduled" ? (
@@ -399,7 +445,7 @@ export default function AdminPage() {
                     )}
                   </div>
                   <div className="flex-1 text-center">
-                    <p className="text-sm font-medium text-foreground truncate">{match.away_team}</p>
+                    <p className="text-sm font-medium text-foreground truncate">{getTeamName(match.away_team_id, match.away_team)}</p>
                   </div>
                 </div>
 
@@ -491,22 +537,40 @@ export default function AdminPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="home_team">홈팀 *</Label>
-                <Input
-                  id="home_team"
-                  placeholder="홈팀 이름"
-                  value={formData.home_team}
-                  onChange={(e) => setFormData({ ...formData, home_team: e.target.value })}
-                />
+                <Label>홈팀 *</Label>
+                <Select
+                  value={formData.home_team_id}
+                  onValueChange={(value) => setFormData({ ...formData, home_team_id: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="홈팀 선택" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {teams.map((team) => (
+                      <SelectItem key={team.id} value={team.id}>
+                        {team.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="away_team">원정팀 *</Label>
-                <Input
-                  id="away_team"
-                  placeholder="원정팀 이름"
-                  value={formData.away_team}
-                  onChange={(e) => setFormData({ ...formData, away_team: e.target.value })}
-                />
+                <Label>원정팀 *</Label>
+                <Select
+                  value={formData.away_team_id}
+                  onValueChange={(value) => setFormData({ ...formData, away_team_id: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="원정팀 선택" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {teams.map((team) => (
+                      <SelectItem key={team.id} value={team.id}>
+                        {team.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -579,22 +643,40 @@ export default function AdminPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="edit_home_team">홈팀 *</Label>
-                <Input
-                  id="edit_home_team"
-                  placeholder="홈팀 이름"
-                  value={formData.home_team}
-                  onChange={(e) => setFormData({ ...formData, home_team: e.target.value })}
-                />
+                <Label>홈팀 *</Label>
+                <Select
+                  value={formData.home_team_id}
+                  onValueChange={(value) => setFormData({ ...formData, home_team_id: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="홈팀 선택" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {teams.map((team) => (
+                      <SelectItem key={team.id} value={team.id}>
+                        {team.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit_away_team">원정팀 *</Label>
-                <Input
-                  id="edit_away_team"
-                  placeholder="원정팀 이름"
-                  value={formData.away_team}
-                  onChange={(e) => setFormData({ ...formData, away_team: e.target.value })}
-                />
+                <Label>원정팀 *</Label>
+                <Select
+                  value={formData.away_team_id}
+                  onValueChange={(value) => setFormData({ ...formData, away_team_id: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="원정팀 선택" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {teams.map((team) => (
+                      <SelectItem key={team.id} value={team.id}>
+                        {team.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">

@@ -66,6 +66,7 @@ export default function MatchControlPage() {
   const [match, setMatch] = useState<Match | null>(null)
   const [events, setEvents] = useState<MatchEvent[]>([])
   const [players, setPlayers] = useState<{ home: Player[]; away: Player[] }>({ home: [], away: [] })
+  const [teamNames, setTeamNames] = useState<{ home: string; away: string }>({ home: "", away: "" })
   const [loading, setLoading] = useState(true)
   const [showThumbnail, setShowThumbnail] = useState(false)
   const { toast } = useToast()
@@ -118,6 +119,18 @@ export default function MatchControlPage() {
 
       if (matchResult.data) {
         setMatch(matchResult.data)
+        // Fetch team names
+        const homeTeamPromise = matchResult.data.home_team_id
+          ? supabase.from("teams").select("name").eq("id", matchResult.data.home_team_id).single()
+          : Promise.resolve({ data: null })
+        const awayTeamPromise = matchResult.data.away_team_id
+          ? supabase.from("teams").select("name").eq("id", matchResult.data.away_team_id).single()
+          : Promise.resolve({ data: null })
+        const [homeTeamResult, awayTeamResult] = await Promise.all([homeTeamPromise, awayTeamPromise])
+        setTeamNames({
+          home: homeTeamResult.data?.name || matchResult.data.home_team || "홈팀",
+          away: awayTeamResult.data?.name || matchResult.data.away_team || "원정팀",
+        })
       }
       if (eventsResult.data) {
         setEvents(eventsResult.data)
@@ -486,8 +499,8 @@ export default function MatchControlPage() {
   }
 
   const penaltyScore = getPenaltyScore()
-  const firstTeamName = penaltyFirstTeam === "home" ? match.home_team : match.away_team
-  const secondTeamName = penaltyFirstTeam === "home" ? match.away_team : match.home_team
+  const firstTeamName = penaltyFirstTeam === "home" ? teamNames.home : teamNames.away
+  const secondTeamName = penaltyFirstTeam === "home" ? teamNames.away : teamNames.home
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -539,7 +552,7 @@ export default function MatchControlPage() {
           <div className="flex items-center justify-between">
             <div className="flex-1 text-center">
               <p className="text-sm font-medium text-foreground truncate">
-                {match.home_team}
+                {teamNames.home}
               </p>
             </div>
             <div className="px-4 text-center">
@@ -574,7 +587,7 @@ export default function MatchControlPage() {
             </div>
             <div className="flex-1 text-center">
               <p className="text-sm font-medium text-foreground truncate">
-                {match.away_team}
+                {teamNames.away}
               </p>
             </div>
           </div>
@@ -752,14 +765,14 @@ export default function MatchControlPage() {
                 className="h-10"
                 onClick={() => setPenaltyFirstTeam("home")}
               >
-                {match.home_team}
+                {teamNames.home}
               </Button>
               <Button
                 variant={penaltyFirstTeam === "away" ? "default" : "outline"}
                 className="h-10"
                 onClick={() => setPenaltyFirstTeam("away")}
               >
-                {match.away_team}
+                {teamNames.away}
               </Button>
             </div>
           </div>
@@ -872,7 +885,7 @@ export default function MatchControlPage() {
                   setSelectedAssistPlayer("")
                 }}
               >
-                {match.home_team}
+                {teamNames.home}
               </Button>
               <Button
                 variant={selectedTeam === "away" ? "default" : "outline"}
@@ -884,7 +897,7 @@ export default function MatchControlPage() {
                   setSelectedAssistPlayer("")
                 }}
               >
-                {match.away_team}
+                {teamNames.away}
               </Button>
             </div>
 
@@ -1026,7 +1039,7 @@ export default function MatchControlPage() {
                     {getEventLabel(event)}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {event.team_side === "home" ? match.home_team : match.away_team}
+                    {event.team_side === "home" ? teamNames.home : teamNames.away}
                   </p>
                 </div>
                 <div className="text-sm font-medium text-primary">{event.minute}&apos;</div>
