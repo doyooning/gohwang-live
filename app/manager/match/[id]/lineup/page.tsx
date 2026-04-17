@@ -113,10 +113,10 @@ export default function LineupManagementPage() {
 
       // Fetch team players
       const homePlayersPromise = matchData.home_team_id
-        ? supabase.from("team_players").select("*").eq("team_id", matchData.home_team_id).eq("is_active", true).order("jersey_number")
+        ? supabase.from("team_players").select("*").eq("team_id", matchData.home_team_id).order("jersey_number")
         : Promise.resolve({ data: [] })
       const awayPlayersPromise = matchData.away_team_id
-        ? supabase.from("team_players").select("*").eq("team_id", matchData.away_team_id).eq("is_active", true).order("jersey_number")
+        ? supabase.from("team_players").select("*").eq("team_id", matchData.away_team_id).order("jersey_number")
         : Promise.resolve({ data: [] })
 
       const [homePlayersResult, awayPlayersResult] = await Promise.all([homePlayersPromise, awayPlayersPromise])

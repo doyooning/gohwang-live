@@ -108,7 +108,6 @@ export default function TeamsPage() {
       .from("team_players")
       .select("*")
       .eq("team_id", teamId)
-      .eq("is_active", true)
       .order("jersey_number", { ascending: true })
 
     if (error) {
@@ -200,7 +199,6 @@ export default function TeamsPage() {
       name: playerName.trim(),
       jersey_number: parseInt(playerNumber),
       position: playerPosition || null,
-      is_active: true,
     })
     setIsSaving(false)
 
@@ -245,7 +243,7 @@ export default function TeamsPage() {
     setIsSaving(true)
     const { error } = await supabase
       .from("team_players")
-      .update({ is_active: false })
+      .delete()
       .eq("id", deletingPlayer.id)
     setIsSaving(false)
 
