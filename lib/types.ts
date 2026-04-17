@@ -26,7 +26,6 @@ export interface TeamPlayer {
   name: string
   jersey_number: number
   position: string | null
-  is_active: boolean
   created_at: string
 }
 
