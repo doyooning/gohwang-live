@@ -93,6 +93,8 @@ export default function MatchControlPage() {
   const [showPenaltyPanel, setShowPenaltyPanel] = useState(false)
   const [penaltyFirstTeam, setPenaltyFirstTeam] = useState<"home" | "away">("home")
   const [penaltyKicks, setPenaltyKicks] = useState<PenaltyKick[]>([])
+  const [currentPenaltyRound, setCurrentPenaltyRound] = useState(1)
+  const [currentPenaltyTeam, setCurrentPenaltyTeam] = useState<"first" | "second">("first")
 
   // Auth guard
   useEffect(() => {
@@ -338,21 +340,87 @@ export default function MatchControlPage() {
     if (data) setEvents(data)
   }
 
-  const handlePenaltyResult = (order: number, team: "first" | "second", result: "success" | "fail") => {
+  const handlePenaltyResult = (result: "success" | "fail") => {
+    // 현재 키커 결과 기록
     setPenaltyKicks((prev) =>
       prev.map((kick) =>
-        kick.order === order && kick.team === team ? { ...kick, result } : kick
+        kick.order === currentPenaltyRound && kick.team === currentPenaltyTeam
+          ? { ...kick, result }
+          : kick
       )
     )
+
+    // 다음 키커로 자동 이동
+    if (currentPenaltyTeam === "first") {
+      // 선공 → 후공
+      setCurrentPenaltyTeam("second")
+    } else {
+      // 후공 → 다음 라운드 선공
+      const nextRound = currentPenaltyRound + 1
+      // 새 라운드 추가 (기존에 없으면)
+      const hasNextRound = penaltyKicks.some((k) => k.order === nextRound)
+      if (!hasNextRound) {
+        setPenaltyKicks((prev) => [
+          ...prev,
+          { order: nextRound, team: "first", result: null },
+          { order: nextRound, team: "second", result: null },
+        ])
+      }
+      setCurrentPenaltyRound(nextRound)
+      setCurrentPenaltyTeam("first")
+    }
   }
 
-  const addPenaltyRound = () => {
-    const maxOrder = Math.max(...penaltyKicks.map((k) => k.order))
-    setPenaltyKicks((prev) => [
-      ...prev,
-      { order: maxOrder + 1, team: "first", result: null },
-      { order: maxOrder + 1, team: "second", result: null },
-    ])
+  const handleUndoPenalty = () => {
+    // 이전 키커로 되돌리기
+    if (currentPenaltyTeam === "second") {
+      // 후공 → 선공으로 되돌리기
+      const firstKick = penaltyKicks.find(
+        (k) => k.order === currentPenaltyRound && k.team === "first"
+      )
+      if (firstKick?.result) {
+        setPenaltyKicks((prev) =>
+          prev.map((kick) =>
+            kick.order === currentPenaltyRound && kick.team === "first"
+              ? { ...kick, result: null }
+              : kick
+          )
+        )
+        setCurrentPenaltyTeam("first")
+      }
+    } else if (currentPenaltyRound > 1) {
+      // 선공 → 이전 라운드 후공으로 되돌리기
+      const prevRound = currentPenaltyRound - 1
+      const secondKick = penaltyKicks.find(
+        (k) => k.order === prevRound && k.team === "second"
+      )
+      if (secondKick?.result) {
+        setPenaltyKicks((prev) =>
+          prev.map((kick) =>
+            kick.order === prevRound && kick.team === "second"
+              ? { ...kick, result: null }
+              : kick
+          )
+        )
+        setCurrentPenaltyRound(prevRound)
+        setCurrentPenaltyTeam("second")
+      }
+    }
+  }
+
+  const canUndoPenalty = () => {
+    if (currentPenaltyTeam === "second") {
+      const firstKick = penaltyKicks.find(
+        (k) => k.order === currentPenaltyRound && k.team === "first"
+      )
+      return firstKick?.result !== null
+    } else if (currentPenaltyRound > 1) {
+      const prevSecondKick = penaltyKicks.find(
+        (k) => k.order === currentPenaltyRound - 1 && k.team === "second"
+      )
+      return prevSecondKick?.result !== null
+    }
+    return false
   }
 
   const getPenaltyScore = () => {
@@ -703,65 +771,71 @@ export default function MatchControlPage() {
             </div>
           </div>
 
-          {/* Penalty kicks table */}
-          <div className="space-y-2 max-h-60 overflow-y-auto">
-            {Array.from(new Set(penaltyKicks.map((k) => k.order))).map((order) => {
-              const firstKick = penaltyKicks.find((k) => k.order === order && k.team === "first")
-              const secondKick = penaltyKicks.find((k) => k.order === order && k.team === "second")
-
-              return (
-                <div key={order} className="flex items-center gap-2 py-2 border-b border-border last:border-b-0">
-                  <span className="text-xs text-muted-foreground w-8 text-center">{order}번</span>
-
-                  {/* First team kick */}
-                  <div className="flex-1 flex gap-1">
-                    <Button
-                      size="sm"
-                      variant={firstKick?.result === "success" ? "default" : "outline"}
-                      className={`flex-1 h-9 ${firstKick?.result === "success" ? "bg-primary" : ""}`}
-                      onClick={() => handlePenaltyResult(order, "first", "success")}
-                    >
-                      O
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={firstKick?.result === "fail" ? "destructive" : "outline"}
-                      className="flex-1 h-9"
-                      onClick={() => handlePenaltyResult(order, "first", "fail")}
-                    >
-                      X
-                    </Button>
-                  </div>
-
-                  <span className="text-xs text-muted-foreground">vs</span>
-
-                  {/* Second team kick */}
-                  <div className="flex-1 flex gap-1">
-                    <Button
-                      size="sm"
-                      variant={secondKick?.result === "success" ? "default" : "outline"}
-                      className={`flex-1 h-9 ${secondKick?.result === "success" ? "bg-primary" : ""}`}
-                      onClick={() => handlePenaltyResult(order, "second", "success")}
-                    >
-                      O
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={secondKick?.result === "fail" ? "destructive" : "outline"}
-                      className="flex-1 h-9"
-                      onClick={() => handlePenaltyResult(order, "second", "fail")}
-                    >
-                      X
-                    </Button>
-                  </div>
-                </div>
-              )
-            })}
+          {/* Current kicker input */}
+          <div className="bg-secondary/20 rounded-lg p-4 mb-4">
+            <div className="text-center mb-3">
+              <span className="text-sm font-bold text-primary">
+                {currentPenaltyRound}번 키커
+              </span>
+              <span className="text-sm text-muted-foreground ml-2">
+                ({currentPenaltyTeam === "first" ? firstTeamName : secondTeamName})
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Button
+                size="lg"
+                variant="outline"
+                className="h-16 text-xl font-bold border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+                onClick={() => handlePenaltyResult("success")}
+              >
+                O 성공
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                className="h-16 text-xl font-bold border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                onClick={() => handlePenaltyResult("fail")}
+              >
+                X 실패
+              </Button>
+            </div>
           </div>
 
-          <Button variant="outline" className="w-full mt-3" onClick={addPenaltyRound}>
-            라운드 추가
-          </Button>
+          {/* Undo button */}
+          {canUndoPenalty() && (
+            <Button
+              variant="outline"
+              className="w-full mb-4"
+              onClick={handleUndoPenalty}
+            >
+              <Undo2 className="size-4 mr-2" />
+              이전으로 되돌리기
+            </Button>
+          )}
+
+          {/* Kick history */}
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground font-medium mb-2">기록</p>
+            <div className="flex flex-wrap gap-1">
+              {Array.from(new Set(penaltyKicks.map((k) => k.order))).map((order) => {
+                const firstKick = penaltyKicks.find((k) => k.order === order && k.team === "first")
+                const secondKick = penaltyKicks.find((k) => k.order === order && k.team === "second")
+
+                return (
+                  <div key={order} className="flex items-center gap-1 text-xs bg-secondary/30 px-2 py-1 rounded">
+                    <span className="text-muted-foreground">{order}.</span>
+                    <span className={firstKick?.result === "success" ? "text-primary font-bold" : firstKick?.result === "fail" ? "text-destructive" : "text-muted-foreground"}>
+                      {firstKick?.result === "success" ? "O" : firstKick?.result === "fail" ? "X" : "-"}
+                    </span>
+                    <span className="text-muted-foreground">:</span>
+                    <span className={secondKick?.result === "success" ? "text-primary font-bold" : secondKick?.result === "fail" ? "text-destructive" : "text-muted-foreground"}>
+                      {secondKick?.result === "success" ? "O" : secondKick?.result === "fail" ? "X" : "-"}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         </div>
       )}
 
