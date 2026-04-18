@@ -288,29 +288,6 @@ export default function AdminPage() {
     setIsDeleteDialogOpen(true)
   }
 
-  const handleStartMatch = async (match: Match) => {
-    const { error } = await supabase
-      .from("matches")
-      .update({ status: "LIVE" })
-      .eq("id", match.id)
-
-    const homeTeam = teams.find((t) => t.id === match.home_team_id)
-    const awayTeam = teams.find((t) => t.id === match.away_team_id)
-
-    if (error) {
-      toast({
-        title: "경기 시작 실패",
-        description: error.message,
-        variant: "destructive",
-      })
-    } else {
-      toast({
-        title: "경기가 시작되었습니다",
-        description: `${homeTeam?.name || match.home_team || "홈팀"} vs ${awayTeam?.name || match.away_team || "원정팀"}`,
-      })
-    }
-  }
-
   const getTeamName = (teamId: string | null | undefined, fallback?: string) => {
     if (!teamId) return fallback || "미지정"
     const team = teams.find((t) => t.id === teamId)
@@ -490,14 +467,6 @@ export default function AdminPage() {
                           <Settings className="size-3" />
                           설정
                         </Button>
-                        <Button
-                          size="sm"
-                          className="h-8 gap-1"
-                          onClick={() => handleStartMatch(match)}
-                        >
-                          <Play className="size-3" />
-                          시작
-                        </Button>
                       </>
                     ) : (
                       <Button
@@ -581,6 +550,7 @@ export default function AdminPage() {
                   type="date"
                   value={formData.match_date}
                   onChange={(e) => setFormData({ ...formData, match_date: e.target.value })}
+                  onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
                 />
               </div>
               <div className="space-y-2">
@@ -590,6 +560,7 @@ export default function AdminPage() {
                   type="time"
                   value={formData.match_time}
                   onChange={(e) => setFormData({ ...formData, match_time: e.target.value })}
+                  onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
                 />
               </div>
             </div>
@@ -687,6 +658,7 @@ export default function AdminPage() {
                   type="date"
                   value={formData.match_date}
                   onChange={(e) => setFormData({ ...formData, match_date: e.target.value })}
+                  onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
                 />
               </div>
               <div className="space-y-2">
@@ -696,6 +668,7 @@ export default function AdminPage() {
                   type="time"
                   value={formData.match_time}
                   onChange={(e) => setFormData({ ...formData, match_time: e.target.value })}
+                  onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
                 />
               </div>
             </div>

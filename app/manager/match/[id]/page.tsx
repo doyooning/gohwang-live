@@ -259,6 +259,42 @@ export default function MatchControlPage() {
     resetForm()
   }
 
+  const handleStartMatch = async () => {
+    const { error } = await supabase
+      .from("matches")
+      .update({ status: "LIVE" })
+      .eq("id", matchId)
+
+    if (error) {
+      toast({
+        title: "경기 시작 실패",
+        description: error.message,
+        variant: "destructive",
+      })
+    } else {
+      toast({ title: "경기가 시작되었습니다" })
+      setMatch((prev) => prev ? { ...prev, status: "LIVE" } : null)
+    }
+  }
+
+  const handleEndMatch = async () => {
+    const { error } = await supabase
+      .from("matches")
+      .update({ status: "FINISHED" })
+      .eq("id", matchId)
+
+    if (error) {
+      toast({
+        title: "경기 종료 실패",
+        description: error.message,
+        variant: "destructive",
+      })
+    } else {
+      toast({ title: "경기가 종료되었습니다" })
+      setMatch((prev) => prev ? { ...prev, status: "FINISHED" } : null)
+    }
+  }
+
   const handleSetTime = async (timeType: TimeType) => {
     // 순서 검증
     const timeOrder: TimeType[] = [
@@ -408,7 +444,7 @@ export default function MatchControlPage() {
         setCurrentPenaltyTeam("first")
       }
     } else if (currentPenaltyRound > 1) {
-      // 선공 → 이전 라운드 후공으로 되돌리기
+      // 선공 → ���전 라운드 후공으로 되돌리기
       const prevRound = currentPenaltyRound - 1
       const secondKick = penaltyKicks.find(
         (k) => k.order === prevRound && k.team === "second"
@@ -520,7 +556,17 @@ export default function MatchControlPage() {
               <Users className="size-5" />
             </Button>
           </div>
-          <Badge className={match.status.toLowerCase() === "live" ? "bg-destructive text-destructive-foreground" : "bg-secondary"}>
+          {match.status.toLowerCase() === "scheduled" && (
+            <Button size="sm" onClick={handleStartMatch}>
+              경기 시작
+            </Button>
+          )}
+          {match.status.toLowerCase() === "live" && (
+            <Button size="sm" variant="destructive" onClick={handleEndMatch}>
+              경기 종료
+            </Button>
+          )}
+          <Badge className={match.status.toLowerCase() === "live" ? "bg-destructive text-destructive-foreground" : match.status.toLowerCase() === "finished" ? "bg-muted text-muted-foreground" : "bg-secondary"}>
             {match.status.toLowerCase() === "live" && (
               <span className="relative flex size-2 mr-1.5">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive-foreground opacity-75" />

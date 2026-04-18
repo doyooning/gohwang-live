@@ -203,7 +203,10 @@ export default function TeamsPage() {
     setIsSaving(false)
 
     if (error) {
-      toast({ title: "선수 추가 실패", description: error.message, variant: "destructive" })
+      const errorMessage = error.message.includes("duplicate") || error.code === "23505"
+        ? "중복된 등번호입니다."
+        : error.message
+      toast({ title: "오류", description: errorMessage, variant: "destructive" })
     } else {
       toast({ title: "선수가 추가되었습니다" })
       setIsPlayerDialogOpen(false)
@@ -227,7 +230,10 @@ export default function TeamsPage() {
     setIsSaving(false)
 
     if (error) {
-      toast({ title: "선수 수정 실패", description: error.message, variant: "destructive" })
+      const errorMessage = error.message.includes("duplicate") || error.code === "23505"
+        ? "중복된 등번호입니다."
+        : error.message
+      toast({ title: "오류", description: errorMessage, variant: "destructive" })
     } else {
       toast({ title: "선수 정보가 수정되었습니다" })
       setIsPlayerDialogOpen(false)
