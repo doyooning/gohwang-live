@@ -280,7 +280,7 @@ export default function MatchControlPage() {
   const handleEndMatch = async () => {
     const { error } = await supabase
       .from("matches")
-      .update({ status: "FINISHED" })
+      .update({ status: "ENDED" })
       .eq("id", matchId)
 
     if (error) {
@@ -291,7 +291,7 @@ export default function MatchControlPage() {
       })
     } else {
       toast({ title: "경기가 종료되었습니다" })
-      setMatch((prev) => prev ? { ...prev, status: "FINISHED" } : null)
+      setMatch((prev) => prev ? { ...prev, status: "ENDED" } : null)
     }
   }
 
@@ -561,12 +561,7 @@ export default function MatchControlPage() {
               경기 시작
             </Button>
           )}
-          {match.status.toLowerCase() === "live" && (
-            <Button size="sm" variant="destructive" onClick={handleEndMatch}>
-              경기 종료
-            </Button>
-          )}
-          <Badge className={match.status.toLowerCase() === "live" ? "bg-destructive text-destructive-foreground" : match.status.toLowerCase() === "finished" ? "bg-muted text-muted-foreground" : "bg-secondary"}>
+          <Badge className={match.status.toLowerCase() === "live" ? "bg-destructive text-destructive-foreground" : match.status.toLowerCase() === "ended" ? "bg-muted text-muted-foreground" : "bg-secondary"}>
             {match.status.toLowerCase() === "live" && (
               <span className="relative flex size-2 mr-1.5">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive-foreground opacity-75" />
@@ -575,12 +570,19 @@ export default function MatchControlPage() {
             )}
             {match.status.toLowerCase() === "live" ? "LIVE" : match.status.toLowerCase() === "scheduled" ? "예정" : "종료"}
           </Badge>
-          <div className="flex items-center gap-2">
-            <ImageIcon className="size-4 text-muted-foreground" />
-            <Switch
-              checked={showThumbnail}
-              onCheckedChange={setShowThumbnail}
-            />
+          <div className="flex items-center gap-3">
+            {match.status.toLowerCase() === "live" && (
+              <Button size="sm" variant="destructive" onClick={handleEndMatch}>
+                경기 종료
+              </Button>
+            )}
+            <div className="flex items-center gap-2">
+              <ImageIcon className="size-4 text-muted-foreground" />
+              <Switch
+                checked={showThumbnail}
+                onCheckedChange={setShowThumbnail}
+              />
+            </div>
           </div>
         </div>
 
