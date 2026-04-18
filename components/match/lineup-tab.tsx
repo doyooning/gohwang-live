@@ -88,28 +88,50 @@ export function LineupTab({ matchId }: LineupTabProps) {
     const supabase = createClient()
 
     async function fetchData() {
-      const [matchResult, lineupsResult] = await Promise.all([
-        supabase.from("matches").select("*").eq("id", matchId).single(),
-        supabase.from("lineups").select("*").eq("match_id", matchId).order("jersey_number", { ascending: true }),
-      ])
+      const matchResult = await supabase.from("matches").select("*").eq("id", matchId).single()
+      const { data: matchLineups } = await supabase
+        .from("match_lineups")
+        .select("id, team_side")
+        .eq("match_id", matchId)
+
+      let fetchedLineups: Lineup[] = []
+
+      if (matchLineups?.length) {
+        const lineupIds = matchLineups.map((lineup) => lineup.id)
+        const { data: lineupPlayersData } = await supabase
+          .from("match_lineup_players")
+          .select("id, match_lineup_id, lineup_role, team_player(name, jersey_number)")
+          .in("match_lineup_id", lineupIds)
+
+        fetchedLineups = lineupPlayersData?.map((lp: any) => {
+          const lineup = matchLineups.find((item: any) => item.id === lp.match_lineup_id)
+          return {
+            id: lp.id,
+            match_id: matchId,
+            team_side: (lineup?.team_side || "HOME") as "HOME" | "AWAY",
+            player_name: lp.team_player?.name || "",
+            jersey_number: lp.team_player?.jersey_number || 0,
+            is_starter: lp.lineup_role === "STARTER",
+            created_at: "",
+          }
+        }) || []
+      }
 
       if (matchResult.data) {
         setMatch(matchResult.data)
       }
-      if (lineupsResult.data) {
-        setLineups(lineupsResult.data)
-      }
+      setLineups(fetchedLineups)
       setLoading(false)
     }
 
     fetchData()
 
-    // Subscribe to realtime updates
+    // Subscribe to realtime updates for the match's lineup rows
     const channel = supabase
-      .channel(`lineups-${matchId}`)
+      .channel(`match-lineups-${matchId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "lineups", filter: `match_id=eq.${matchId}` },
+        { event: "*", schema: "public", table: "match_lineups", filter: `match_id=eq.${matchId}` },
         () => {
           fetchData()
         }
@@ -132,20 +154,20 @@ export function LineupTab({ matchId }: LineupTabProps) {
   const homeLineup: TeamLineup = {
     teamName: match?.home_team || "홈팀",
     starters: lineups
-      .filter((l) => l.team_side === "home" && l.is_starter)
+      .filter((l) => l.team_side === "HOME" && l.is_starter)
       .map((l) => ({ number: l.jersey_number, name: l.player_name })),
     substitutes: lineups
-      .filter((l) => l.team_side === "home" && !l.is_starter)
+      .filter((l) => l.team_side === "HOME" && !l.is_starter)
       .map((l) => ({ number: l.jersey_number, name: l.player_name })),
   }
 
   const awayLineup: TeamLineup = {
     teamName: match?.away_team || "원정팀",
     starters: lineups
-      .filter((l) => l.team_side === "away" && l.is_starter)
+      .filter((l) => l.team_side === "AWAY" && l.is_starter)
       .map((l) => ({ number: l.jersey_number, name: l.player_name })),
     substitutes: lineups
-      .filter((l) => l.team_side === "away" && !l.is_starter)
+      .filter((l) => l.team_side === "AWAY" && !l.is_starter)
       .map((l) => ({ number: l.jersey_number, name: l.player_name })),
   }
 

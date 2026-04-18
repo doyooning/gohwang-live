@@ -113,10 +113,9 @@ export default function MatchControlPage() {
     if (isLoading || !user) return
 
     async function fetchData() {
-      const [matchResult, eventsResult, lineupsResult] = await Promise.all([
+      const [matchResult, eventsResult] = await Promise.all([
         supabase.from("matches").select("*").eq("id", matchId).single(),
         supabase.from("match_events").select("*").eq("match_id", matchId).order("minute", { ascending: false }),
-        supabase.from("lineups").select("*").eq("match_id", matchId),
       ])
 
       if (matchResult.data) {
@@ -137,15 +136,41 @@ export default function MatchControlPage() {
       if (eventsResult.data) {
         setEvents(eventsResult.data)
       }
-      if (lineupsResult.data) {
-        const homePlayers = lineupsResult.data
-          .filter((l: Lineup) => l.team_side === "home")
-          .map((l: Lineup) => ({ id: l.id, name: l.player_name, number: l.jersey_number }))
-        const awayPlayers = lineupsResult.data
-          .filter((l: Lineup) => l.team_side === "away")
-          .map((l: Lineup) => ({ id: l.id, name: l.player_name, number: l.jersey_number }))
-        setPlayers({ home: homePlayers, away: awayPlayers })
+
+      const { data: lineupData } = await supabase
+        .from("match_lineups")
+        .select("id, team_side")
+        .eq("match_id", matchId)
+
+      const homePlayers: Player[] = []
+      const awayPlayers: Player[] = []
+
+      if (lineupData?.length) {
+        const lineupIds = lineupData.map((lineup) => lineup.id)
+        const { data: lineupPlayersData } = await supabase
+          .from("match_lineup_players")
+          .select("id, match_lineup_id, lineup_role, team_player!inner(name, jersey_number)")
+          .in("match_lineup_id", lineupIds)
+
+        lineupPlayersData?.forEach((lp: any) => {
+          const lineup = lineupData.find((l: any) => l.id === lp.match_lineup_id)
+          if (!lineup) return
+
+          const player = {
+            id: lp.id,
+            name: lp.team_player?.name || "",
+            number: lp.team_player?.jersey_number || 0,
+          }
+
+          if (lineup.team_side === "HOME") {
+            homePlayers.push(player)
+          } else {
+            awayPlayers.push(player)
+          }
+        })
       }
+
+      setPlayers({ home: homePlayers, away: awayPlayers })
       setLoading(false)
     }
 
@@ -222,26 +247,46 @@ export default function MatchControlPage() {
     const eventType = activePanel === "yellow_card" || activePanel === "red_card" ? cardType : activePanel!
 
     let description = ""
+    let assistPlayerId = null
+    let assistPlayerName = null
+    let substitutedInPlayerId = null
+    let substitutedInPlayerName = null
+    let substitutedOutPlayerId = null
+    let substitutedOutPlayerName = null
+
     if (activePanel === "goal" && selectedAssistPlayer && selectedAssistPlayer !== "none") {
       const assistPlayer = teamPlayers.find((p) => p.id === selectedAssistPlayer)
       if (assistPlayer) {
         description = `어시스트: ${assistPlayer.name}`
+        assistPlayerId = assistPlayer.id
+        assistPlayerName = assistPlayer.name
       }
     }
     if (activePanel === "substitution" && selectedPlayerOut) {
       const playerOut = teamPlayers.find((p) => p.id === selectedPlayerOut)
       if (playerOut) {
         description = playerOut.name
+        substitutedInPlayerId = player.id
+        substitutedInPlayerName = player.name
+        substitutedOutPlayerId = playerOut.id
+        substitutedOutPlayerName = playerOut.name
       }
     }
 
     const { error } = await supabase.from("match_events").insert({
       match_id: matchId,
       event_type: eventType,
-      team_side: selectedTeam,
+      team_side: selectedTeam.toUpperCase(),
       player_name: player.name,
+      player_id: player.id,
       minute,
       description,
+      assist_player_name: assistPlayerName,
+      assist_player_id: assistPlayerId,
+      substituted_in_player_name: substitutedInPlayerName,
+      substituted_in_player_id: substitutedInPlayerId,
+      substituted_out_player_name: substitutedOutPlayerName,
+      substituted_out_player_id: substitutedOutPlayerId,
     })
 
     if (error) {
@@ -357,7 +402,7 @@ export default function MatchControlPage() {
     const { data: insertedEvent } = await supabase.from("match_events").insert({
       match_id: matchId,
       event_type: "time_record",
-      team_side: "home",
+      team_side: "HOME",
       player_name: timeLabels[timeType],
       minute: minuteValues[timeType],
       description: now,

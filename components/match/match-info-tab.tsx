@@ -128,14 +128,14 @@ export function MatchInfoTab({ matchId }: MatchInfoTabProps) {
           <div
             key={event.id}
             className={`flex items-center gap-3 px-4 py-3 border-b border-border/50 ${
-              event.team_side === "away" ? "flex-row-reverse" : ""
+              event.team_side === "AWAY" ? "flex-row-reverse" : ""
             }`}
           >
             <div className="flex items-center gap-2 min-w-[60px]">
               <span className="text-sm font-bold text-primary tabular-nums">{event.minute}&apos;</span>
               <EventIcon type={event.event_type} />
             </div>
-            <div className={`flex-1 ${event.team_side === "away" ? "text-right" : "text-left"}`}>
+            <div className={`flex-1 ${event.team_side === "AWAY" ? "text-right" : "text-left"}`}>
               <EventDescription event={event} />
             </div>
           </div>

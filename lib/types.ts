@@ -33,7 +33,7 @@ export interface MatchLineup {
   id: string
   match_id: string
   team_id: string
-  team_side: "home" | "away"
+  team_side: "HOME" | "AWAY"
   formation: string | null
   created_at: string
   updated_at: string
@@ -43,7 +43,7 @@ export interface MatchLineupPlayer {
   id: string
   match_lineup_id: string
   team_player_id: string
-  lineup_role: "starter" | "substitute"
+  lineup_role: "STARTER" | "SUBSTITUTE"
   created_at: string
   // Joined data
   team_player?: TeamPlayer
@@ -53,20 +53,24 @@ export interface MatchEvent {
   id: string
   match_id: string
   event_type: "goal" | "yellow_card" | "red_card" | "substitution" | "time_record"
-  team_side: "home" | "away"
+  team_side: "HOME" | "AWAY"
   player_name: string
+  player_id: string | null
   minute: number
   description: string | null
   assist_player_name: string | null
+  assist_player_id: string | null
   substituted_in_player_name: string | null
+  substituted_in_player_id: string | null
   substituted_out_player_name: string | null
+  substituted_out_player_id: string | null
   created_at: string
 }
 
 export interface Lineup {
   id: string
   match_id: string
-  team_side: "home" | "away"
+  team_side: "HOME" | "AWAY"
   player_name: string
   jersey_number: number
   is_starter: boolean

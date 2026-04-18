@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation"
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Switch } from "@/components/ui/switch"
 import {
   Select,
@@ -41,10 +42,20 @@ interface LineupPlayer {
   name: string
   number: number
   position: string | null
-  role: "starter" | "substitute"
+  role: "STARTER" | "SUBSTITUTE"
 }
 
 const FORMATIONS: Formation[] = ["4-3-3", "4-2-3-1", "3-4-3"]
+
+// Helper to convert team side from internal format to database enum
+const getTeamSideEnum = (teamSide: "home" | "away"): "HOME" | "AWAY" => {
+  return teamSide === "home" ? "HOME" : "AWAY"
+}
+
+// Helper to convert lineup role from internal format to database enum
+const getLineupRoleEnum = (role: "starter" | "substitute"): "STARTER" | "SUBSTITUTE" => {
+  return role === "starter" ? "STARTER" : "SUBSTITUTE"
+}
 
 export default function LineupManagementPage() {
   const { user, isLoading } = useAuth()
@@ -52,6 +63,7 @@ export default function LineupManagementPage() {
   const params = useParams()
   const matchId = params.id as string
   const { toast } = useToast()
+  
   const supabase = createClient()
 
   const [match, setMatch] = useState<Match | null>(null)
@@ -70,6 +82,7 @@ export default function LineupManagementPage() {
   const [isFormationSelectOpen, setIsFormationSelectOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([])
 
   // Alert dialog state
   const [alertOpen, setAlertOpen] = useState(false)
@@ -133,8 +146,8 @@ export default function LineupManagementPage() {
         .select("*")
         .eq("match_id", matchId)
 
-      const homeLineup = lineupsData?.find((l: MatchLineup) => l.team_side === "home") || null
-      const awayLineup = lineupsData?.find((l: MatchLineup) => l.team_side === "away") || null
+      const homeLineup = lineupsData?.find((l: MatchLineup) => l.team_side === "HOME") || null
+      const awayLineup = lineupsData?.find((l: MatchLineup) => l.team_side === "AWAY") || null
       setMatchLineups({ home: homeLineup, away: awayLineup })
 
       if (homeLineup?.formation) {
@@ -182,8 +195,8 @@ export default function LineupManagementPage() {
 
   const currentPlayers = lineupPlayers[activeTeam]
   const currentTeamPlayers = teamPlayers[activeTeam]
-  const starters = currentPlayers.filter((p) => p.role === "starter")
-  const substitutes = currentPlayers.filter((p) => p.role === "substitute")
+  const starters = currentPlayers.filter((p) => p.role === "STARTER")
+  const substitutes = currentPlayers.filter((p) => p.role === "SUBSTITUTE")
 
   // Players not yet in lineup
   const availablePlayers = currentTeamPlayers.filter(
@@ -206,7 +219,7 @@ export default function LineupManagementPage() {
   }
 
   const validateLineup = (players: LineupPlayer[]): { valid: boolean; message: string } => {
-    const starterPlayers = players.filter((p) => p.role === "starter")
+    const starterPlayers = players.filter((p) => p.role === "STARTER")
     const gkCount = starterPlayers.filter((p) => p.position === "GK").length
 
     if (starterPlayers.length !== 11) {
@@ -238,7 +251,7 @@ export default function LineupManagementPage() {
       ...prev,
       [activeTeam]: prev[activeTeam].map((player) =>
         player.id === playerId
-          ? { ...player, role: player.role === "starter" ? "substitute" : "starter" }
+          ? { ...player, role: player.role === "STARTER" ? "SUBSTITUTE" : "STARTER" }
           : player
       ),
     }))
@@ -255,7 +268,101 @@ export default function LineupManagementPage() {
     toast({ title: "선수가 라인업에서 제외되었습니다" })
   }
 
-  const handleAddPlayerToLineup = async (teamPlayer: TeamPlayer, role: "starter" | "substitute") => {
+  const handleTogglePlayerSelection = (playerId: string) => {
+    setSelectedPlayerIds((prev) =>
+      prev.includes(playerId) ? prev.filter((id) => id !== playerId) : [...prev, playerId]
+    )
+  }
+
+  const handleClearSelection = () => {
+    setSelectedPlayerIds([])
+  }
+
+  const handleAddSelectedPlayersToLineup = async () => {
+    if (selectedPlayerIds.length === 0) return
+
+    let lineupId = matchLineups[activeTeam]?.id
+
+    if (!lineupId) {
+      const teamId = activeTeam === "home" ? match?.home_team_id : match?.away_team_id
+      if (!teamId) return
+
+      const payload = {
+        match_id: matchId,
+        team_id: teamId,
+        team_side: getTeamSideEnum(activeTeam),
+        formation: formations[activeTeam],
+      }
+      console.log('[Insert match_lineups payload]', payload)
+
+      const { data: newLineup, error: insertError } = await supabase
+        .from("match_lineups")
+        .insert(payload)
+        .select()
+        .single()
+
+      if (insertError) {
+        console.error('[match_lineups error]', insertError)
+        toast({ title: `라인업 생성 실패: ${insertError.message}`, description: insertError.details })
+        return
+      }
+
+      if (newLineup) {
+        lineupId = newLineup.id
+        setMatchLineups((prev) => ({ ...prev, [activeTeam]: newLineup }))
+      }
+    }
+
+    if (!lineupId) return
+
+    const selectedPlayers = availablePlayers.filter((player) => selectedPlayerIds.includes(player.id))
+
+    const rows = selectedPlayers.map((player) => ({
+      match_lineup_id: lineupId,
+      team_player_id: player.id,
+      lineup_role: "SUBSTITUTE",
+    }))
+
+    console.log('[Insert match_lineup_players payload]', rows)
+
+    const { data: newLineupPlayers, error: playersError } = await supabase
+      .from("match_lineup_players")
+      .insert(rows)
+      .select()
+
+    if (playersError) {
+      console.error('[match_lineup_players error]', playersError)
+      toast({ title: `선수 추가 실패: ${playersError.message}`, description: playersError.details })
+      return
+    }
+
+    if (newLineupPlayers) {
+      const addedPlayers = selectedPlayers.map((player) => {
+        const inserted = newLineupPlayers.find(
+          (item: MatchLineupPlayer) => item.team_player_id === player.id
+        )
+
+        return {
+          id: inserted?.id || "",
+          teamPlayerId: player.id,
+          name: player.name,
+          number: player.jersey_number,
+          position: player.position,
+          role: "SUBSTITUTE" as const,
+        }
+      })
+
+      setLineupPlayers((prev) => ({
+        ...prev,
+        [activeTeam]: [...prev[activeTeam], ...addedPlayers],
+      }))
+      setSelectedPlayerIds([])
+      toast({ title: `${addedPlayers.length}명의 선수가 라인업에 추가되었습니다` })
+      setIsSelectPlayerDialogOpen(false)
+    }
+  }
+
+  const handleAddPlayerToLineup = async (teamPlayer: TeamPlayer, role: "STARTER" | "SUBSTITUTE") => {
     // Ensure match lineup exists
     let lineupId = matchLineups[activeTeam]?.id
 
@@ -268,7 +375,7 @@ export default function LineupManagementPage() {
         .insert({
           match_id: matchId,
           team_id: teamId,
-          team_side: activeTeam,
+          team_side: getTeamSideEnum(activeTeam),
           formation: formations[activeTeam],
         })
         .select()
@@ -534,7 +641,10 @@ export default function LineupManagementPage() {
       <div className="sticky bottom-0 p-4 bg-background border-t border-border">
         <Button
           className="w-full h-14 gap-2 text-base"
-          onClick={() => setIsSelectPlayerDialogOpen(true)}
+          onClick={() => {
+            setSelectedPlayerIds([])
+            setIsSelectPlayerDialogOpen(true)
+          }}
           disabled={!teams[activeTeam]}
         >
           <UserPlus className="size-5" />
@@ -569,7 +679,15 @@ export default function LineupManagementPage() {
           <DialogHeader>
             <DialogTitle>선수 선택</DialogTitle>
           </DialogHeader>
-          <div className="flex-1 overflow-y-auto py-4 space-y-2">
+          <div className="flex flex-col flex-1 overflow-y-auto py-4 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground">
+                체크한 선수들만 라인업에 포함됩니다.
+              </p>
+              <Button variant="ghost" size="sm" onClick={handleClearSelection}>
+                선택 해제
+              </Button>
+            </div>
             {availablePlayers.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground text-sm">
                 추가할 수 있는 선수가 없습니다
@@ -580,6 +698,10 @@ export default function LineupManagementPage() {
                   key={player.id}
                   className="flex items-center gap-3 p-3 border border-border rounded-lg"
                 >
+                  <Checkbox
+                    checked={selectedPlayerIds.includes(player.id)}
+                    onCheckedChange={() => handleTogglePlayerSelection(player.id)}
+                  />
                   <div className="flex items-center justify-center size-10 rounded-lg bg-secondary text-foreground font-bold text-sm">
                     {player.jersey_number}
                   </div>
@@ -597,26 +719,18 @@ export default function LineupManagementPage() {
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleAddPlayerToLineup(player, "substitute")}
-                    >
-                      교체
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => handleAddPlayerToLineup(player, "starter")}
-                    >
-                      선발
-                    </Button>
-                  </div>
                 </div>
               ))
             )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex flex-col gap-2">
+            <Button
+              onClick={handleAddSelectedPlayersToLineup}
+              disabled={selectedPlayerIds.length === 0}
+              className="w-full"
+            >
+              선택한 선수 추가 ({selectedPlayerIds.length})
+            </Button>
             <Button variant="outline" onClick={() => setIsSelectPlayerDialogOpen(false)}>
               닫기
             </Button>
@@ -672,7 +786,7 @@ function PlayerCard({
       <div className="flex items-center gap-2">
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">선발</span>
-          <Switch checked={player.role === "starter"} onCheckedChange={onToggleRole} />
+          <Switch checked={player.role === "STARTER"} onCheckedChange={onToggleRole} />
         </div>
         <Button
           variant="ghost"
