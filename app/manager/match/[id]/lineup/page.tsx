@@ -1,26 +1,26 @@
-﻿"use client"
+﻿'use client';
 
-import { useAuth } from "@/contexts/auth-context"
-import { useRouter, useParams } from "next/navigation"
-import { useEffect, useState } from "react"
-import { createClient } from "@/lib/supabase/client"
-import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Switch } from "@/components/ui/switch"
+import { useAuth } from '@/contexts/auth-context';
+import { useRouter, useParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@/components/ui/dialog"
+} from '@/components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,349 +29,435 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-import { useToast } from "@/hooks/use-toast"
-import { ArrowLeft, Plus, Trash2, Save, Users, Loader2, UserPlus } from "lucide-react"
-import type { Match, Team, TeamPlayer, MatchLineup, MatchLineupPlayer } from "@/lib/types"
+} from '@/components/ui/alert-dialog';
+import { useToast } from '@/hooks/use-toast';
+import {
+  ArrowLeft,
+  Plus,
+  Trash2,
+  Save,
+  Users,
+  Loader2,
+  UserPlus,
+} from 'lucide-react';
+import type {
+  Match,
+  Team,
+  TeamPlayer,
+  MatchLineup,
+  MatchLineupPlayer,
+} from '@/lib/types';
 
-type Formation = "4-3-3" | "4-2-3-1" | "3-4-3"
+type Formation = '4-3-3' | '4-2-3-1' | '3-4-3';
 
 interface LineupPlayer {
-  id: string
-  teamPlayerId: string
-  name: string
-  number: number
-  position: string | null
-  role: "STARTER" | "SUBSTITUTE"
+  id: string;
+  teamPlayerId: string;
+  name: string;
+  number: number;
+  position: string | null;
+  role: 'STARTER' | 'SUBSTITUTE';
 }
 
-const FORMATIONS: Formation[] = ["4-3-3", "4-2-3-1", "3-4-3"]
+const FORMATIONS: Formation[] = ['4-3-3', '4-2-3-1', '3-4-3'];
 
 // Helper to convert team side from internal format to database enum
-const getTeamSideEnum = (teamSide: "home" | "away"): "HOME" | "AWAY" => {
-  return teamSide === "home" ? "HOME" : "AWAY"
-}
+const getTeamSideEnum = (teamSide: 'home' | 'away'): 'HOME' | 'AWAY' => {
+  return teamSide === 'home' ? 'HOME' : 'AWAY';
+};
 
 // Helper to convert lineup role from internal format to database enum
-const getLineupRoleEnum = (role: "starter" | "substitute"): "STARTER" | "SUBSTITUTE" => {
-  return role === "starter" ? "STARTER" : "SUBSTITUTE"
-}
+const getLineupRoleEnum = (
+  role: 'starter' | 'substitute',
+): 'STARTER' | 'SUBSTITUTE' => {
+  return role === 'starter' ? 'STARTER' : 'SUBSTITUTE';
+};
 
 export default function LineupManagementPage() {
-  const { user, isLoading } = useAuth()
-  const router = useRouter()
-  const params = useParams()
-  const matchId = params.id as string
-  const { toast } = useToast()
-  
-  const supabase = createClient()
+  const { user, isLoading } = useAuth();
+  const router = useRouter();
+  const params = useParams();
+  const matchId = params.id as string;
+  const { toast } = useToast();
 
-  const [match, setMatch] = useState<Match | null>(null)
-  const [teams, setTeams] = useState<{ home: Team | null; away: Team | null }>({ home: null, away: null })
-  const [teamPlayers, setTeamPlayers] = useState<{ home: TeamPlayer[]; away: TeamPlayer[] }>({ home: [], away: [] })
-  const [matchLineups, setMatchLineups] = useState<{ home: MatchLineup | null; away: MatchLineup | null }>({ home: null, away: null })
-  const [lineupPlayers, setLineupPlayers] = useState<{ home: LineupPlayer[]; away: LineupPlayer[] }>({ home: [], away: [] })
+  const supabase = createClient() as any;
 
-  const [activeTeam, setActiveTeam] = useState<"home" | "away">("home")
-  const [formations, setFormations] = useState<{ home: Formation; away: Formation }>({
-    home: "4-3-3",
-    away: "4-3-3",
-  })
+  const [match, setMatch] = useState<Match | null>(null);
+  const [teams, setTeams] = useState<{ home: Team | null; away: Team | null }>({
+    home: null,
+    away: null,
+  });
+  const [teamPlayers, setTeamPlayers] = useState<{
+    home: TeamPlayer[];
+    away: TeamPlayer[];
+  }>({ home: [], away: [] });
+  const [matchLineups, setMatchLineups] = useState<{
+    home: MatchLineup | null;
+    away: MatchLineup | null;
+  }>({ home: null, away: null });
+  const [lineupPlayers, setLineupPlayers] = useState<{
+    home: LineupPlayer[];
+    away: LineupPlayer[];
+  }>({ home: [], away: [] });
 
-  const [isSelectPlayerDialogOpen, setIsSelectPlayerDialogOpen] = useState(false)
-  const [isFormationSelectOpen, setIsFormationSelectOpen] = useState(false)
-  const [isSaving, setIsSaving] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([])
+  const [activeTeam, setActiveTeam] = useState<'home' | 'away'>('home');
+  const [formations, setFormations] = useState<{
+    home: Formation;
+    away: Formation;
+  }>({
+    home: '4-3-3',
+    away: '4-3-3',
+  });
+
+  const [isSelectPlayerDialogOpen, setIsSelectPlayerDialogOpen] =
+    useState(false);
+  const [isFormationSelectOpen, setIsFormationSelectOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
 
   // Alert dialog state
-  const [alertOpen, setAlertOpen] = useState(false)
-  const [alertMessage, setAlertMessage] = useState("")
-  const [alertTitle, setAlertTitle] = useState("")
+  const [alertOpen, setAlertOpen] = useState(false);
+  const [alertMessage, setAlertMessage] = useState('');
+  const [alertTitle, setAlertTitle] = useState('');
 
   useEffect(() => {
-    if (isLoading) return
+    if (isLoading) return;
     if (!user) {
-      router.push("/login")
+      router.push('/login');
     }
-  }, [isLoading, user, router])
+  }, [isLoading, user, router]);
 
   useEffect(() => {
-    if (isLoading || !user) return
+    if (isLoading || !user) return;
     async function fetchData() {
       // Fetch match
       const { data: matchData } = await supabase
-        .from("matches")
-        .select("*")
-        .eq("id", matchId)
-        .single()
+        .from('matches')
+        .select('*')
+        .eq('id', matchId)
+        .single();
 
       if (!matchData) {
-        setLoading(false)
-        return
+        setLoading(false);
+        return;
       }
-      setMatch(matchData)
+      setMatch(matchData);
 
       // Fetch teams
-      const homeTeamPromise = matchData.home_team_id
-        ? supabase.from("teams").select("*").eq("id", matchData.home_team_id).single()
-        : Promise.resolve({ data: null })
-      const awayTeamPromise = matchData.away_team_id
-        ? supabase.from("teams").select("*").eq("id", matchData.away_team_id).single()
-        : Promise.resolve({ data: null })
+      const homeTeamPromise = matchData?.home_team_id
+        ? supabase
+            .from('teams')
+            .select('*')
+            .eq('id', matchData.home_team_id)
+            .single()
+        : Promise.resolve({ data: null });
+      const awayTeamPromise = matchData?.away_team_id
+        ? supabase
+            .from('teams')
+            .select('*')
+            .eq('id', matchData.away_team_id)
+            .single()
+        : Promise.resolve({ data: null });
 
-      const [homeTeamResult, awayTeamResult] = await Promise.all([homeTeamPromise, awayTeamPromise])
+      const [homeTeamResult, awayTeamResult] = await Promise.all([
+        homeTeamPromise,
+        awayTeamPromise,
+      ]);
       setTeams({
         home: homeTeamResult.data,
         away: awayTeamResult.data,
-      })
+      });
 
       // Fetch team players
-      const homePlayersPromise = matchData.home_team_id
-        ? supabase.from("team_players").select("*").eq("team_id", matchData.home_team_id).order("jersey_number")
-        : Promise.resolve({ data: [] })
-      const awayPlayersPromise = matchData.away_team_id
-        ? supabase.from("team_players").select("*").eq("team_id", matchData.away_team_id).order("jersey_number")
-        : Promise.resolve({ data: [] })
+      const homePlayersPromise = matchData?.home_team_id
+        ? supabase
+            .from('team_players')
+            .select('*')
+            .eq('team_id', matchData.home_team_id)
+            .order('jersey_number')
+        : Promise.resolve({ data: [] });
+      const awayPlayersPromise = matchData?.away_team_id
+        ? supabase
+            .from('team_players')
+            .select('*')
+            .eq('team_id', matchData.away_team_id)
+            .order('jersey_number')
+        : Promise.resolve({ data: [] });
 
-      const [homePlayersResult, awayPlayersResult] = await Promise.all([homePlayersPromise, awayPlayersPromise])
+      const [homePlayersResult, awayPlayersResult] = await Promise.all([
+        homePlayersPromise,
+        awayPlayersPromise,
+      ]);
       setTeamPlayers({
         home: homePlayersResult.data || [],
         away: awayPlayersResult.data || [],
-      })
+      });
 
       // Fetch match lineups
       const { data: lineupsData } = await supabase
-        .from("match_lineups")
-        .select("*")
-        .eq("match_id", matchId)
+        .from('match_lineups')
+        .select('*')
+        .eq('match_id', matchId);
 
-      const homeLineup = lineupsData?.find((l: MatchLineup) => l.team_side === "HOME") || null
-      const awayLineup = lineupsData?.find((l: MatchLineup) => l.team_side === "AWAY") || null
-      setMatchLineups({ home: homeLineup, away: awayLineup })
+      const homeLineup =
+        lineupsData?.find((l: MatchLineup) => l.team_side === 'HOME') || null;
+      const awayLineup =
+        lineupsData?.find((l: MatchLineup) => l.team_side === 'AWAY') || null;
+      setMatchLineups({ home: homeLineup, away: awayLineup });
 
       if (homeLineup?.formation) {
-        setFormations((prev) => ({ ...prev, home: homeLineup.formation as Formation }))
+        setFormations((prev) => ({
+          ...prev,
+          home: homeLineup.formation as Formation,
+        }));
       }
       if (awayLineup?.formation) {
-        setFormations((prev) => ({ ...prev, away: awayLineup.formation as Formation }))
+        setFormations((prev) => ({
+          ...prev,
+          away: awayLineup.formation as Formation,
+        }));
       }
 
       // Fetch lineup players
-      const lineupIds = [homeLineup?.id, awayLineup?.id].filter(Boolean)
+      const lineupIds = [homeLineup?.id, awayLineup?.id].filter(Boolean);
       if (lineupIds.length > 0) {
         const { data: lineupPlayersData } = await supabase
-          .from("match_lineup_players")
-          .select("*, team_player:team_players(*)")
-          .in("match_lineup_id", lineupIds)
+          .from('match_lineup_players')
+          .select('*, team_player:team_players(*)')
+          .in('match_lineup_id', lineupIds);
 
-        const homePlayers: LineupPlayer[] = []
-        const awayPlayers: LineupPlayer[] = []
+        const homePlayers: LineupPlayer[] = [];
+        const awayPlayers: LineupPlayer[] = [];
 
-        lineupPlayersData?.forEach((lp: MatchLineupPlayer & { team_player: TeamPlayer }) => {
-          const player: LineupPlayer = {
-            id: lp.id,
-            teamPlayerId: lp.team_player_id,
-            name: lp.team_player?.name || "",
-            number: lp.team_player?.jersey_number || 0,
-            position: lp.team_player?.position || null,
-            role: lp.lineup_role,
-          }
-          if (lp.match_lineup_id === homeLineup?.id) {
-            homePlayers.push(player)
-          } else {
-            awayPlayers.push(player)
-          }
-        })
+        lineupPlayersData?.forEach(
+          (lp: MatchLineupPlayer & { team_player: TeamPlayer }) => {
+            const player: LineupPlayer = {
+              id: lp.id,
+              teamPlayerId: lp.team_player_id,
+              name: lp.team_player?.name || '',
+              number: lp.team_player?.jersey_number || 0,
+              position: lp.team_player?.position || null,
+              role: lp.lineup_role,
+            };
+            if (lp.match_lineup_id === homeLineup?.id) {
+              homePlayers.push(player);
+            } else {
+              awayPlayers.push(player);
+            }
+          },
+        );
 
-        setLineupPlayers({ home: homePlayers, away: awayPlayers })
+        setLineupPlayers({ home: homePlayers, away: awayPlayers });
       }
 
-      setLoading(false)
+      setLoading(false);
     }
 
-    fetchData()
-  }, [isLoading, user, matchId, supabase])
+    fetchData();
+  }, [isLoading, user, matchId, supabase]);
 
-  const currentPlayers = lineupPlayers[activeTeam]
-  const currentTeamPlayers = teamPlayers[activeTeam]
-  const starters = currentPlayers.filter((p) => p.role === "STARTER")
-  const substitutes = currentPlayers.filter((p) => p.role === "SUBSTITUTE")
+  const currentPlayers = lineupPlayers[activeTeam];
+  const currentTeamPlayers = teamPlayers[activeTeam];
+  const starters = currentPlayers.filter((p) => p.role === 'STARTER');
+  const substitutes = currentPlayers.filter((p) => p.role === 'SUBSTITUTE');
 
   // Players not yet in lineup
   const availablePlayers = currentTeamPlayers.filter(
-    (tp) => !currentPlayers.some((lp) => lp.teamPlayerId === tp.id)
-  )
+    (tp) => !currentPlayers.some((lp) => lp.teamPlayerId === tp.id),
+  );
 
   const getPositionColor = (position: string | null) => {
     switch (position) {
-      case "GK":
-        return "bg-yellow-500/20 text-yellow-400"
-      case "DF":
-        return "bg-blue-500/20 text-blue-400"
-      case "MF":
-        return "bg-green-500/20 text-green-400"
-      case "FW":
-        return "bg-red-500/20 text-red-400"
+      case 'GK':
+        return 'bg-yellow-500/20 text-yellow-400';
+      case 'DF':
+        return 'bg-blue-500/20 text-blue-400';
+      case 'MF':
+        return 'bg-green-500/20 text-green-400';
+      case 'FW':
+        return 'bg-red-500/20 text-red-400';
       default:
-        return "bg-secondary text-muted-foreground"
+        return 'bg-secondary text-muted-foreground';
     }
-  }
+  };
 
-  const validateLineup = (players: LineupPlayer[]): { valid: boolean; message: string } => {
-    const starterPlayers = players.filter((p) => p.role === "STARTER")
-    const gkCount = starterPlayers.filter((p) => p.position === "GK").length
+  const validateLineup = (
+    players: LineupPlayer[],
+  ): { valid: boolean; message: string } => {
+    const starterPlayers = players.filter((p) => p.role === 'STARTER');
+    const gkCount = starterPlayers.filter((p) => p.position === 'GK').length;
 
     if (starterPlayers.length !== 11) {
       return {
         valid: false,
         message: `선발 명단은 반드시 11명이어야 합니다. (현재: ${starterPlayers.length}명)`,
-      }
+      };
     }
 
     if (gkCount === 0) {
       return {
         valid: false,
-        message: "선발 명단에 골키퍼가 반드시 1명 포함되어야 합니다.",
-      }
+        message: '선발 명단에 골키퍼가 반드시 1명 포함되어야 합니다.',
+      };
     }
 
     if (gkCount > 1) {
       return {
         valid: false,
         message: `선발 명단에 골키퍼는 1명만 포함될 수 있습니다. (현재: ${gkCount}명)`,
-      }
+      };
     }
 
-    return { valid: true, message: "" }
-  }
+    return { valid: true, message: '' };
+  };
 
   const handleToggleRole = (playerId: string) => {
     setLineupPlayers((prev) => ({
       ...prev,
       [activeTeam]: prev[activeTeam].map((player) =>
         player.id === playerId
-          ? { ...player, role: player.role === "STARTER" ? "SUBSTITUTE" : "STARTER" }
-          : player
+          ? {
+              ...player,
+              role: player.role === 'STARTER' ? 'SUBSTITUTE' : 'STARTER',
+            }
+          : player,
       ),
-    }))
-  }
+    }));
+  };
 
   const handleRemovePlayer = async (playerId: string) => {
-    await supabase.from("match_lineup_players").delete().eq("id", playerId)
+    await supabase.from('match_lineup_players').delete().eq('id', playerId);
 
     setLineupPlayers((prev) => ({
       ...prev,
       [activeTeam]: prev[activeTeam].filter((player) => player.id !== playerId),
-    }))
+    }));
 
-    toast({ title: "선수가 라인업에서 제외되었습니다" })
-  }
+    toast({ title: '선수가 라인업에서 제외되었습니다' });
+  };
 
   const handleTogglePlayerSelection = (playerId: string) => {
     setSelectedPlayerIds((prev) =>
-      prev.includes(playerId) ? prev.filter((id) => id !== playerId) : [...prev, playerId]
-    )
-  }
+      prev.includes(playerId)
+        ? prev.filter((id) => id !== playerId)
+        : [...prev, playerId],
+    );
+  };
 
   const handleClearSelection = () => {
-    setSelectedPlayerIds([])
-  }
+    setSelectedPlayerIds([]);
+  };
 
   const handleAddSelectedPlayersToLineup = async () => {
-    if (selectedPlayerIds.length === 0) return
+    if (selectedPlayerIds.length === 0) return;
 
-    let lineupId = matchLineups[activeTeam]?.id
+    let lineupId = matchLineups[activeTeam]?.id;
 
     if (!lineupId) {
-      const teamId = activeTeam === "home" ? match?.home_team_id : match?.away_team_id
-      if (!teamId) return
+      const teamId =
+        activeTeam === 'home' ? match?.home_team_id : match?.away_team_id;
+      if (!teamId) return;
 
       const payload = {
         match_id: matchId,
         team_id: teamId,
         team_side: getTeamSideEnum(activeTeam),
         formation: formations[activeTeam],
-      }
-      console.log('[Insert match_lineups payload]', payload)
+      };
+      console.log('[Insert match_lineups payload]', payload);
 
       const { data: newLineup, error: insertError } = await supabase
-        .from("match_lineups")
+        .from('match_lineups')
         .insert(payload)
         .select()
-        .single()
+        .single();
 
       if (insertError) {
-        console.error('[match_lineups error]', insertError)
-        toast({ title: `라인업 생성 실패: ${insertError.message}`, description: insertError.details })
-        return
+        console.error('[match_lineups error]', insertError);
+        toast({
+          title: `라인업 생성 실패: ${insertError.message}`,
+          description: insertError.details,
+        });
+        return;
       }
 
       if (newLineup) {
-        lineupId = newLineup.id
-        setMatchLineups((prev) => ({ ...prev, [activeTeam]: newLineup }))
+        lineupId = newLineup.id;
+        setMatchLineups((prev) => ({ ...prev, [activeTeam]: newLineup }));
       }
     }
 
-    if (!lineupId) return
+    if (!lineupId) return;
 
-    const selectedPlayers = availablePlayers.filter((player) => selectedPlayerIds.includes(player.id))
+    const selectedPlayers = availablePlayers.filter((player) =>
+      selectedPlayerIds.includes(player.id),
+    );
 
     const rows = selectedPlayers.map((player) => ({
       match_lineup_id: lineupId,
       team_player_id: player.id,
-      lineup_role: "SUBSTITUTE",
-    }))
+      lineup_role: 'SUBSTITUTE',
+    }));
 
-    console.log('[Insert match_lineup_players payload]', rows)
+    console.log('[Insert match_lineup_players payload]', rows);
 
     const { data: newLineupPlayers, error: playersError } = await supabase
-      .from("match_lineup_players")
+      .from('match_lineup_players')
       .insert(rows)
-      .select()
+      .select();
 
     if (playersError) {
-      console.error('[match_lineup_players error]', playersError)
-      toast({ title: `선수 추가 실패: ${playersError.message}`, description: playersError.details })
-      return
+      console.error('[match_lineup_players error]', playersError);
+      toast({
+        title: `선수 추가 실패: ${playersError.message}`,
+        description: playersError.details,
+      });
+      return;
     }
 
     if (newLineupPlayers) {
       const addedPlayers = selectedPlayers.map((player) => {
         const inserted = newLineupPlayers.find(
-          (item: MatchLineupPlayer) => item.team_player_id === player.id
-        )
+          (item: MatchLineupPlayer) => item.team_player_id === player.id,
+        );
 
         return {
-          id: inserted?.id || "",
+          id: inserted?.id || '',
           teamPlayerId: player.id,
           name: player.name,
           number: player.jersey_number,
           position: player.position,
-          role: "SUBSTITUTE" as const,
-        }
-      })
+          role: 'SUBSTITUTE' as const,
+        };
+      });
 
       setLineupPlayers((prev) => ({
         ...prev,
         [activeTeam]: [...prev[activeTeam], ...addedPlayers],
-      }))
-      setSelectedPlayerIds([])
-      toast({ title: `${addedPlayers.length}명의 선수가 라인업에 추가되었습니다` })
-      setIsSelectPlayerDialogOpen(false)
+      }));
+      setSelectedPlayerIds([]);
+      toast({
+        title: `${addedPlayers.length}명의 선수가 라인업에 추가되었습니다`,
+      });
+      setIsSelectPlayerDialogOpen(false);
     }
-  }
+  };
 
-  const handleAddPlayerToLineup = async (teamPlayer: TeamPlayer, role: "STARTER" | "SUBSTITUTE") => {
+  const handleAddPlayerToLineup = async (
+    teamPlayer: TeamPlayer,
+    role: 'STARTER' | 'SUBSTITUTE',
+  ) => {
     // Ensure match lineup exists
-    let lineupId = matchLineups[activeTeam]?.id
+    let lineupId = matchLineups[activeTeam]?.id;
 
     if (!lineupId) {
-      const teamId = activeTeam === "home" ? match?.home_team_id : match?.away_team_id
-      if (!teamId) return
+      const teamId =
+        activeTeam === 'home' ? match?.home_team_id : match?.away_team_id;
+      if (!teamId) return;
 
       const { data: newLineup } = await supabase
-        .from("match_lineups")
+        .from('match_lineups')
         .insert({
           match_id: matchId,
           team_id: teamId,
@@ -379,25 +465,25 @@ export default function LineupManagementPage() {
           formation: formations[activeTeam],
         })
         .select()
-        .single()
+        .single();
 
       if (newLineup) {
-        lineupId = newLineup.id
-        setMatchLineups((prev) => ({ ...prev, [activeTeam]: newLineup }))
+        lineupId = newLineup.id;
+        setMatchLineups((prev) => ({ ...prev, [activeTeam]: newLineup }));
       }
     }
 
-    if (!lineupId) return
+    if (!lineupId) return;
 
     const { data: newLineupPlayer } = await supabase
-      .from("match_lineup_players")
+      .from('match_lineup_players')
       .insert({
         match_lineup_id: lineupId,
         team_player_id: teamPlayer.id,
         lineup_role: role,
       })
       .select()
-      .single()
+      .single();
 
     if (newLineupPlayer) {
       const newPlayer: LineupPlayer = {
@@ -407,87 +493,87 @@ export default function LineupManagementPage() {
         number: teamPlayer.jersey_number,
         position: teamPlayer.position,
         role: role,
-      }
+      };
 
       setLineupPlayers((prev) => ({
         ...prev,
         [activeTeam]: [...prev[activeTeam], newPlayer],
-      }))
+      }));
 
-      toast({ title: `${teamPlayer.name} 선수가 라인업에 추가되었습니다` })
+      toast({ title: `${teamPlayer.name} 선수가 라인업에 추가되었습니다` });
     }
 
-    setIsSelectPlayerDialogOpen(false)
-  }
+    setIsSelectPlayerDialogOpen(false);
+  };
 
   const handleSaveLineup = async () => {
     // Validate both teams
-    const homeValidation = validateLineup(lineupPlayers.home)
-    const awayValidation = validateLineup(lineupPlayers.away)
+    const homeValidation = validateLineup(lineupPlayers.home);
+    const awayValidation = validateLineup(lineupPlayers.away);
 
     if (!homeValidation.valid) {
-      setAlertTitle("라인업 오류")
-      setAlertMessage(`[홈팀] ${homeValidation.message}`)
-      setAlertOpen(true)
-      return
+      setAlertTitle('라인업 오류');
+      setAlertMessage(`[홈팀] ${homeValidation.message}`);
+      setAlertOpen(true);
+      return;
     }
 
     if (!awayValidation.valid) {
-      setAlertTitle("라인업 오류")
-      setAlertMessage(`[원정팀] ${awayValidation.message}`)
-      setAlertOpen(true)
-      return
+      setAlertTitle('라인업 오류');
+      setAlertMessage(`[원정팀] ${awayValidation.message}`);
+      setAlertOpen(true);
+      return;
     }
 
-    setIsSaving(true)
+    setIsSaving(true);
 
     // Update lineup roles
-    const allPlayers = [...lineupPlayers.home, ...lineupPlayers.away]
+    const allPlayers = [...lineupPlayers.home, ...lineupPlayers.away];
     for (const player of allPlayers) {
       await supabase
-        .from("match_lineup_players")
+        .from('match_lineup_players')
         .update({ lineup_role: player.role })
-        .eq("id", player.id)
+        .eq('id', player.id);
     }
 
     // Update formations
     if (matchLineups.home) {
       await supabase
-        .from("match_lineups")
+        .from('match_lineups')
         .update({ formation: formations.home })
-        .eq("id", matchLineups.home.id)
+        .eq('id', matchLineups.home.id);
     }
     if (matchLineups.away) {
       await supabase
-        .from("match_lineups")
+        .from('match_lineups')
         .update({ formation: formations.away })
-        .eq("id", matchLineups.away.id)
+        .eq('id', matchLineups.away.id);
     }
 
-    setIsSaving(false)
-    toast({ title: "라인업이 저장되었습니다" })
-  }
+    setIsSaving(false);
+    toast({ title: '라인업이 저장되었습니다' });
+  };
 
   const handleFormationChange = (formation: Formation) => {
     setFormations((prev) => ({
       ...prev,
       [activeTeam]: formation,
-    }))
-    setIsFormationSelectOpen(false)
-  }
+    }));
+    setIsFormationSelectOpen(false);
+  };
 
-  if (!user) return null
+  if (!user) return null;
 
   if (loading || !match) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="size-8 animate-spin text-primary" />
       </div>
-    )
+    );
   }
 
-  const homeTeamName = teams.home?.name || match.home_team || "홈팀"
-  const awayTeamName = teams.away?.name || match.away_team || "원정팀"
+  const homeTeamName = teams.home?.name || match.home_team || '홈팀';
+  const awayTeamName = teams.away?.name || match.away_team || '원정팀';
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -502,7 +588,9 @@ export default function LineupManagementPage() {
             <ArrowLeft className="size-5" />
           </Button>
           <div className="flex-1">
-            <h1 className="text-lg font-semibold text-foreground">라인업 관리</h1>
+            <h1 className="text-lg font-semibold text-foreground">
+              라인업 관리
+            </h1>
             <p className="text-xs text-muted-foreground">
               {homeTeamName} vs {awayTeamName}
             </p>
@@ -513,7 +601,7 @@ export default function LineupManagementPage() {
             className="gap-2"
           >
             <Save className="size-4" />
-            {isSaving ? "저장 중..." : "저장"}
+            {isSaving ? '저장 중...' : '저장'}
           </Button>
         </div>
       </header>
@@ -522,9 +610,9 @@ export default function LineupManagementPage() {
       <div className="px-4 py-3 bg-secondary/30 border-b border-border">
         <div className="grid grid-cols-2 gap-2">
           <Button
-            variant={activeTeam === "home" ? "default" : "outline"}
+            variant={activeTeam === 'home' ? 'default' : 'outline'}
             className="h-12"
-            onClick={() => setActiveTeam("home")}
+            onClick={() => setActiveTeam('home')}
           >
             <div className="flex flex-col items-center">
               <span className="font-medium">{homeTeamName}</span>
@@ -532,9 +620,9 @@ export default function LineupManagementPage() {
             </div>
           </Button>
           <Button
-            variant={activeTeam === "away" ? "default" : "outline"}
+            variant={activeTeam === 'away' ? 'default' : 'outline'}
             className="h-12"
-            onClick={() => setActiveTeam("away")}
+            onClick={() => setActiveTeam('away')}
           >
             <div className="flex flex-col items-center">
               <span className="font-medium">{awayTeamName}</span>
@@ -548,7 +636,8 @@ export default function LineupManagementPage() {
       {!teams[activeTeam] && (
         <div className="px-4 py-3 bg-destructive/10 border-b border-destructive/20">
           <p className="text-sm text-destructive">
-            이 팀은 팀 명단과 연결되지 않았습니다. 경기 설정에서 팀을 연결해주세요.
+            이 팀은 팀 명단과 연결되지 않았습니다. 경기 설정에서 팀을
+            연결해주세요.
           </p>
         </div>
       )}
@@ -642,18 +731,20 @@ export default function LineupManagementPage() {
         <Button
           className="w-full h-14 gap-2 text-base"
           onClick={() => {
-            setSelectedPlayerIds([])
-            setIsSelectPlayerDialogOpen(true)
+            setSelectedPlayerIds([]);
+            setIsSelectPlayerDialogOpen(true);
           }}
           disabled={!teams[activeTeam]}
         >
-          <UserPlus className="size-5" />
-          팀 명단에서 선수 불러오기
+          <UserPlus className="size-5" />팀 명단에서 선수 불러오기
         </Button>
       </div>
 
       {/* Formation Select Dialog */}
-      <Dialog open={isFormationSelectOpen} onOpenChange={setIsFormationSelectOpen}>
+      <Dialog
+        open={isFormationSelectOpen}
+        onOpenChange={setIsFormationSelectOpen}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>포메이션 선택</DialogTitle>
@@ -662,7 +753,9 @@ export default function LineupManagementPage() {
             {FORMATIONS.map((formation) => (
               <Button
                 key={formation}
-                variant={formations[activeTeam] === formation ? "default" : "outline"}
+                variant={
+                  formations[activeTeam] === formation ? 'default' : 'outline'
+                }
                 className="w-full h-14 text-xl font-bold"
                 onClick={() => handleFormationChange(formation)}
               >
@@ -674,7 +767,10 @@ export default function LineupManagementPage() {
       </Dialog>
 
       {/* Select Player from Team Dialog */}
-      <Dialog open={isSelectPlayerDialogOpen} onOpenChange={setIsSelectPlayerDialogOpen}>
+      <Dialog
+        open={isSelectPlayerDialogOpen}
+        onOpenChange={setIsSelectPlayerDialogOpen}
+      >
         <DialogContent className="sm:max-w-md max-h-[80vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>선수 선택</DialogTitle>
@@ -700,7 +796,9 @@ export default function LineupManagementPage() {
                 >
                   <Checkbox
                     checked={selectedPlayerIds.includes(player.id)}
-                    onCheckedChange={() => handleTogglePlayerSelection(player.id)}
+                    onCheckedChange={() =>
+                      handleTogglePlayerSelection(player.id)
+                    }
                   />
                   <div className="flex items-center justify-center size-10 rounded-lg bg-secondary text-foreground font-bold text-sm">
                     {player.jersey_number}
@@ -712,7 +810,7 @@ export default function LineupManagementPage() {
                     {player.position && (
                       <span
                         className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getPositionColor(
-                          player.position
+                          player.position,
                         )}`}
                       >
                         {player.position}
@@ -731,7 +829,10 @@ export default function LineupManagementPage() {
             >
               선택한 선수 추가 ({selectedPlayerIds.length})
             </Button>
-            <Button variant="outline" onClick={() => setIsSelectPlayerDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setIsSelectPlayerDialogOpen(false)}
+            >
               닫기
             </Button>
           </DialogFooter>
@@ -751,7 +852,7 @@ export default function LineupManagementPage() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
-  )
+  );
 }
 
 // Player Card Component
@@ -761,10 +862,10 @@ function PlayerCard({
   onToggleRole,
   onRemove,
 }: {
-  player: LineupPlayer
-  positionColor: string
-  onToggleRole: () => void
-  onRemove: () => void
+  player: LineupPlayer;
+  positionColor: string;
+  onToggleRole: () => void;
+  onRemove: () => void;
 }) {
   return (
     <div className="flex items-center gap-3 bg-card border border-border rounded-lg p-3">
@@ -786,7 +887,10 @@ function PlayerCard({
       <div className="flex items-center gap-2">
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">선발</span>
-          <Switch checked={player.role === "STARTER"} onCheckedChange={onToggleRole} />
+          <Switch
+            checked={player.role === 'STARTER'}
+            onCheckedChange={onToggleRole}
+          />
         </div>
         <Button
           variant="ghost"
@@ -798,5 +902,5 @@ function PlayerCard({
         </Button>
       </div>
     </div>
-  )
+  );
 }
