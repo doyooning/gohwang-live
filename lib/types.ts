@@ -59,16 +59,12 @@ export interface MatchEvent {
     | 'substitution'
     | 'time_record';
   team_side: 'HOME' | 'AWAY';
-  player_name: string;
-  player_id: string | null;
+  scored_player_id: string | null;
   minute: number;
   description: string | null;
-  assist_player_name: string | null;
   assist_player_id: string | null;
-  substituted_in_player_name: string | null;
-  substituted_in_player_id: string | null;
-  substituted_out_player_name: string | null;
-  substituted_out_player_id: string | null;
+  sub_in_player_id: string | null;
+  sub_out_player_id: string | null;
   created_at: string;
 }
 

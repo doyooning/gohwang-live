@@ -11,7 +11,7 @@ export function MatchList() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const supabase = createClient()
+    const supabase = createClient() as any
 
     async function fetchMatches() {
       const { data, error } = await supabase
@@ -79,11 +79,11 @@ export function MatchList() {
               <MatchCard
                 key={match.id}
                 id={match.id}
-                homeTeam={match.home_team}
-                awayTeam={match.away_team}
+                homeTeam={match.home_team || "홈팀"}
+                awayTeam={match.away_team || "원정팀"}
                 homeScore={match.home_score}
                 awayScore={match.away_score}
-                venue={match.location}
+                venue={match.location || "-"}
                 status={match.status.toLowerCase() as "live" | "scheduled" | "finished"}
               />
             ))}
@@ -101,13 +101,13 @@ export function MatchList() {
               <MatchCard
                 key={match.id}
                 id={match.id}
-                homeTeam={match.home_team}
-                awayTeam={match.away_team}
+                homeTeam={match.home_team || "홈팀"}
+                awayTeam={match.away_team || "원정팀"}
                 scheduledTime={new Date(match.match_date).toLocaleTimeString("ko-KR", {
                   hour: "2-digit",
                   minute: "2-digit",
                 })}
-                venue={match.location}
+                venue={match.location || "-"}
                 status={match.status.toLowerCase() as "live" | "scheduled" | "finished"}
               />
             ))}
@@ -125,11 +125,11 @@ export function MatchList() {
               <MatchCard
                 key={match.id}
                 id={match.id}
-                homeTeam={match.home_team}
-                awayTeam={match.away_team}
+                homeTeam={match.home_team || "홈팀"}
+                awayTeam={match.away_team || "원정팀"}
                 homeScore={match.home_score}
                 awayScore={match.away_score}
-                venue={match.location}
+                venue={match.location || "-"}
                 status={match.status.toLowerCase() as "live" | "scheduled" | "finished"}
               />
             ))}

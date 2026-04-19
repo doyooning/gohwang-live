@@ -101,7 +101,7 @@ export default function AdminPage() {
   const [formData, setFormData] = useState<MatchFormData>(initialFormData)
   const [isSaving, setIsSaving] = useState(false)
 
-  const supabase = useMemo(() => createClient(), [])
+  const supabase = useMemo(() => createClient() as any, [])
 
   useEffect(() => {
     if (isLoading) return

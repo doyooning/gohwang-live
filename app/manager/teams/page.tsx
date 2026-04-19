@@ -56,7 +56,7 @@ export default function TeamsPage() {
   const { user, isLoading } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
-  const supabase = createClient()
+  const supabase = createClient() as any
 
   const [teams, setTeams] = useState<Team[]>([])
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)

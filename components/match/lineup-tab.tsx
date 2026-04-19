@@ -99,7 +99,7 @@ export function LineupTab({ matchId }: LineupTabProps) {
       return;
     }
 
-    const supabase = createClient();
+    const supabase = createClient() as any;
 
     async function fetchData() {
       const matchResult = await supabase
@@ -115,11 +115,11 @@ export function LineupTab({ matchId }: LineupTabProps) {
       let fetchedLineups: Lineup[] = [];
 
       if (matchLineups?.length) {
-        const lineupIds = matchLineups.map((lineup) => lineup.id);
+        const lineupIds = matchLineups.map((lineup: any) => lineup.id);
         const { data: lineupPlayersData } = await supabase
           .from('match_lineup_players')
           .select(
-            'id, match_lineup_id, lineup_role, team_player(name, jersey_number)',
+            'id, match_lineup_id, lineup_role, team_player:team_players!inner(name, jersey_number)',
           )
           .in('match_lineup_id', lineupIds);
 
@@ -130,7 +130,7 @@ export function LineupTab({ matchId }: LineupTabProps) {
             );
             return {
               id: lp.id,
-              match_id: matchId,
+              match_id: matchId || '',
               team_side: (lineup?.team_side || 'HOME') as 'HOME' | 'AWAY',
               player_name: lp.team_player?.name || '',
               jersey_number: lp.team_player?.jersey_number || 0,
@@ -141,7 +141,31 @@ export function LineupTab({ matchId }: LineupTabProps) {
       }
 
       if (matchResult.data) {
-        setMatch(matchResult.data);
+        const homeTeamPromise = matchResult.data.home_team_id
+          ? supabase
+              .from('teams')
+              .select('name')
+              .eq('id', matchResult.data.home_team_id)
+              .single()
+          : Promise.resolve({ data: null, error: null });
+        const awayTeamPromise = matchResult.data.away_team_id
+          ? supabase
+              .from('teams')
+              .select('name')
+              .eq('id', matchResult.data.away_team_id)
+              .single()
+          : Promise.resolve({ data: null, error: null });
+
+        const [homeTeamResult, awayTeamResult] = await Promise.all([
+          homeTeamPromise,
+          awayTeamPromise,
+        ]);
+
+        setMatch({
+          ...matchResult.data,
+          home_team: homeTeamResult.data?.name || matchResult.data.home_team,
+          away_team: awayTeamResult.data?.name || matchResult.data.away_team,
+        });
       }
       setLineups(fetchedLineups);
       setLoading(false);
@@ -149,8 +173,8 @@ export function LineupTab({ matchId }: LineupTabProps) {
 
     fetchData();
 
-    // Subscribe to realtime updates for the match's lineup rows
-    const channel = supabase
+    // Subscribe to realtime updates
+    const lineupChannel = supabase
       .channel(`match-lineups-${matchId}`)
       .on(
         'postgres_changes',
@@ -166,8 +190,24 @@ export function LineupTab({ matchId }: LineupTabProps) {
       )
       .subscribe();
 
+    const lineupPlayersChannel = supabase
+      .channel(`match-lineup-players-${matchId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'match_lineup_players',
+        },
+        () => {
+          fetchData();
+        },
+      )
+      .subscribe();
+
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(lineupChannel);
+      supabase.removeChannel(lineupPlayersChannel);
     };
   }, [matchId]);
 

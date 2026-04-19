@@ -34,14 +34,22 @@ function EventIcon({ type }: { type: string }) {
   }
 }
 
-function EventDescription({ event }: { event: MatchEvent }) {
+function EventDescription({
+  event,
+  getPlayerNameById,
+}: {
+  event: MatchEvent;
+  getPlayerNameById: (id: string | null | undefined, fallback?: string) => string;
+}) {
+  const scorerName = getPlayerNameById(event.scored_player_id, '');
+  const subInName = getPlayerNameById(event.sub_in_player_id, '');
+  const subOutName = getPlayerNameById(event.sub_out_player_id, event.description || '');
+
   switch (event.event_type) {
     case 'goal':
       return (
         <div>
-          <span className="font-medium text-foreground">
-            {event.player_name}
-          </span>
+          <span className="font-medium text-foreground">{scorerName}</span>
           {event.description && (
             <span className="text-muted-foreground text-xs ml-1">
               ({event.description})
@@ -51,33 +59,30 @@ function EventDescription({ event }: { event: MatchEvent }) {
       );
     case 'yellow_card':
     case 'red_card':
-      return (
-        <span className="font-medium text-foreground">{event.player_name}</span>
-      );
+      return <span className="font-medium text-foreground">{scorerName}</span>;
     case 'substitution':
       return (
         <div className="flex items-center gap-1">
           <span className="text-primary text-sm">IN</span>
-          <span className="font-medium text-foreground">
-            {event.player_name}
-          </span>
-          {event.description && (
+          <span className="font-medium text-foreground">{subInName}</span>
+          {subOutName && (
             <>
               <span className="text-destructive text-sm ml-2">OUT</span>
-              <span className="text-muted-foreground">{event.description}</span>
+              <span className="text-muted-foreground">{subOutName}</span>
             </>
           )}
         </div>
       );
     default:
-      return (
-        <span className="font-medium text-foreground">{event.player_name}</span>
-      );
+      return <span className="font-medium text-foreground">{scorerName}</span>;
   }
 }
 
 export function MatchInfoTab({ matchId }: MatchInfoTabProps) {
   const [events, setEvents] = useState<MatchEvent[]>([]);
+  const [playerNameById, setPlayerNameById] = useState<Record<string, string>>(
+    {},
+  );
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -86,7 +91,7 @@ export function MatchInfoTab({ matchId }: MatchInfoTabProps) {
       return;
     }
 
-    const supabase = createClient();
+    const supabase = createClient() as any;
 
     async function fetchEvents() {
       const { data, error } = await supabase
@@ -99,6 +104,29 @@ export function MatchInfoTab({ matchId }: MatchInfoTabProps) {
         console.error('Error fetching events:', error);
       } else {
         setEvents(data || []);
+      }
+
+      const { data: matchLineups } = await supabase
+        .from('match_lineups')
+        .select('id')
+        .eq('match_id', matchId);
+
+      const lineupIds = (matchLineups || []).map((lineup: any) => lineup.id);
+      if (lineupIds.length > 0) {
+        const { data: lineupPlayers } = await supabase
+          .from('match_lineup_players')
+          .select('id, team_player:team_players(name)')
+          .in('match_lineup_id', lineupIds);
+
+        const nextNameById: Record<string, string> = {};
+        (lineupPlayers || []).forEach((player: any) => {
+          if (player?.id) {
+            nextNameById[player.id] = player.team_player?.name || '';
+          }
+        });
+        setPlayerNameById(nextNameById);
+      } else {
+        setPlayerNameById({});
       }
       setLoading(false);
     }
@@ -143,6 +171,14 @@ export function MatchInfoTab({ matchId }: MatchInfoTabProps) {
     );
   }
 
+  const getPlayerNameById = (
+    id: string | null | undefined,
+    fallback = '',
+  ) => {
+    if (!id) return fallback;
+    return playerNameById[id] || fallback;
+  };
+
   return (
     <ScrollArea className="h-full">
       <div className="py-2">
@@ -162,7 +198,10 @@ export function MatchInfoTab({ matchId }: MatchInfoTabProps) {
             <div
               className={`flex-1 ${event.team_side === 'AWAY' ? 'text-right' : 'text-left'}`}
             >
-              <EventDescription event={event} />
+              <EventDescription
+                event={event}
+                getPlayerNameById={getPlayerNameById}
+              />
             </div>
           </div>
         ))}

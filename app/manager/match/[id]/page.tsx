@@ -38,6 +38,7 @@ interface Player {
   id: string;
   name: string;
   number: number;
+  role: 'STARTER' | 'SUBSTITUTE';
 }
 
 type TimeType =
@@ -68,7 +69,7 @@ export default function MatchControlPage() {
   const router = useRouter();
   const params = useParams();
   const matchId = params.id as string;
-  const supabase = useMemo(() => createClient(), []);
+  const supabase = useMemo(() => createClient() as any, []);
 
   const [match, setMatch] = useState<Match | null>(null);
   const [events, setEvents] = useState<MatchEvent[]>([]);
@@ -184,11 +185,11 @@ export default function MatchControlPage() {
       const awayPlayers: Player[] = [];
 
       if (lineupData?.length) {
-        const lineupIds = lineupData.map((lineup) => lineup.id);
+        const lineupIds = lineupData.map((lineup: any) => lineup.id);
         const { data: lineupPlayersData } = await supabase
           .from('match_lineup_players')
           .select(
-            'id, match_lineup_id, lineup_role, team_player!inner(name, jersey_number)',
+            'id, match_lineup_id, lineup_role, team_player:team_players!inner(name, jersey_number)',
           )
           .in('match_lineup_id', lineupIds);
 
@@ -202,6 +203,7 @@ export default function MatchControlPage() {
             id: lp.id,
             name: lp.team_player?.name || '',
             number: lp.team_player?.jersey_number || 0,
+            role: lp.lineup_role,
           };
 
           if (lineup.team_side === 'HOME') {
@@ -276,6 +278,13 @@ export default function MatchControlPage() {
     [players],
   );
 
+  const getPlayersByRole = useCallback(
+    (team: 'home' | 'away', role: 'STARTER' | 'SUBSTITUTE') => {
+      return getPlayers(team).filter((player) => player.role === role);
+    },
+    [getPlayers],
+  );
+
   const resetForm = () => {
     setSelectedTeam('');
     setSelectedPlayer('');
@@ -289,7 +298,7 @@ export default function MatchControlPage() {
   const handleSaveEvent = async () => {
     if (!selectedTeam || !selectedPlayer || !match) return;
 
-    const supabase = createClient();
+    const supabase = createClient() as any;
     const minute = inputMinute ? parseInt(inputMinute) : 0;
     const teamPlayers = getPlayers(selectedTeam as 'home' | 'away');
     const player = teamPlayers.find((p) => p.id === selectedPlayer);
@@ -303,11 +312,8 @@ export default function MatchControlPage() {
 
     let description = '';
     let assistPlayerId = null;
-    let assistPlayerName = null;
     let substitutedInPlayerId = null;
-    let substitutedInPlayerName = null;
     let substitutedOutPlayerId = null;
-    let substitutedOutPlayerName = null;
 
     if (
       activePanel === 'goal' &&
@@ -320,7 +326,6 @@ export default function MatchControlPage() {
       if (assistPlayer) {
         description = `어시스트: ${assistPlayer.name}`;
         assistPlayerId = assistPlayer.id;
-        assistPlayerName = assistPlayer.name;
       }
     }
     if (activePanel === 'substitution' && selectedPlayerOut) {
@@ -328,27 +333,23 @@ export default function MatchControlPage() {
       if (playerOut) {
         description = playerOut.name;
         substitutedInPlayerId = player.id;
-        substitutedInPlayerName = player.name;
         substitutedOutPlayerId = playerOut.id;
-        substitutedOutPlayerName = playerOut.name;
       }
     }
 
-    const { error } = await supabase.from('match_events').insert({
+    const payload = {
       match_id: matchId,
       event_type: eventType,
       team_side: selectedTeam.toUpperCase(),
-      player_name: player.name,
-      player_id: player.id,
+      scored_player_id: player.id,
       minute,
       description,
-      assist_player_name: assistPlayerName,
       assist_player_id: assistPlayerId,
-      substituted_in_player_name: substitutedInPlayerName,
-      substituted_in_player_id: substitutedInPlayerId,
-      substituted_out_player_name: substitutedOutPlayerName,
-      substituted_out_player_id: substitutedOutPlayerId,
-    });
+      sub_in_player_id: substitutedInPlayerId,
+      sub_out_player_id: substitutedOutPlayerId,
+    };
+
+    const { error } = await supabase.from('match_events').insert(payload);
 
     if (error) {
       console.error('Error saving event:', error);
@@ -400,7 +401,9 @@ export default function MatchControlPage() {
       });
     } else {
       toast({ title: '경기가 종료되었습니다' });
-      setMatch((prev) => (prev ? { ...prev, status: 'ENDED' } : null));
+      setMatch((prev) =>
+        prev ? { ...prev, status: 'ENDED' as Match['status'] } : null,
+      );
     }
   };
 
@@ -467,9 +470,8 @@ export default function MatchControlPage() {
         match_id: matchId,
         event_type: 'time_record',
         team_side: 'HOME',
-        player_name: timeLabels[timeType],
         minute: minuteValues[timeType],
-        description: now,
+        description: `${timeLabels[timeType]} (${now})`,
       })
       .select()
       .single();
@@ -604,6 +606,17 @@ export default function MatchControlPage() {
     return { first: firstTeamScore, second: secondTeamScore };
   };
 
+  const getPlayerNameByLineupPlayerId = useCallback(
+    (lineupPlayerId: string | null | undefined) => {
+      if (!lineupPlayerId) return '';
+      const found = [...players.home, ...players.away].find(
+        (p) => p.id === lineupPlayerId,
+      );
+      return found?.name || '';
+    },
+    [players],
+  );
+
   const getEventIcon = (type: string) => {
     switch (type) {
       case 'goal':
@@ -622,23 +635,30 @@ export default function MatchControlPage() {
   };
 
   const getEventLabel = (event: MatchEvent) => {
+    const scorerName =
+      getPlayerNameByLineupPlayerId(event.scored_player_id) || '';
+    const subInName =
+      getPlayerNameByLineupPlayerId(event.sub_in_player_id) || '';
+    const subOutName =
+      getPlayerNameByLineupPlayerId(event.sub_out_player_id) ||
+      event.description ||
+      '';
+
     switch (event.event_type) {
       case 'goal':
         return event.description
-          ? `${event.player_name} 득점 (${event.description})`
-          : `${event.player_name} 득점`;
+          ? `${scorerName} 득점 (${event.description})`
+          : `${scorerName} 득점`;
       case 'yellow_card':
-        return `${event.player_name} 경고`;
+        return `${scorerName} 경고`;
       case 'red_card':
-        return `${event.player_name} 퇴장`;
+        return `${scorerName} 퇴장`;
       case 'substitution':
-        return event.description
-          ? `${event.description} OUT / ${event.player_name} IN`
-          : `${event.player_name} IN`;
+        return subOutName ? `${subOutName} OUT / ${subInName} IN` : `${subInName} IN`;
       case 'time_record':
-        return `${event.player_name} (${event.description})`;
+        return event.description || '시간 기록';
       default:
-        return event.player_name;
+        return scorerName || event.description || '이벤트';
     }
   };
 
@@ -1236,13 +1256,17 @@ export default function MatchControlPage() {
                     />
                   </SelectTrigger>
                   <SelectContent>
-                    {getPlayers(selectedTeam as 'home' | 'away').map(
-                      (player) => (
-                        <SelectItem key={player.id} value={player.id}>
-                          #{player.number} {player.name}
-                        </SelectItem>
-                      ),
-                    )}
+                    {(activePanel === 'substitution'
+                      ? getPlayersByRole(
+                          selectedTeam as 'home' | 'away',
+                          'SUBSTITUTE',
+                        )
+                      : getPlayers(selectedTeam as 'home' | 'away')
+                    ).map((player) => (
+                      <SelectItem key={player.id} value={player.id}>
+                        #{player.number} {player.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
 
@@ -1278,7 +1302,10 @@ export default function MatchControlPage() {
                       <SelectValue placeholder="교체 OUT 선수 선택" />
                     </SelectTrigger>
                     <SelectContent>
-                      {getPlayers(selectedTeam as 'home' | 'away')
+                      {getPlayersByRole(
+                        selectedTeam as 'home' | 'away',
+                        'STARTER',
+                      )
                         .filter((p) => p.id !== selectedPlayer)
                         .map((player) => (
                           <SelectItem key={player.id} value={player.id}>
@@ -1344,7 +1371,7 @@ export default function MatchControlPage() {
                     {getEventLabel(event)}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {event.team_side === 'home'
+                    {event.team_side === 'HOME'
                       ? teamNames.home
                       : teamNames.away}
                   </p>

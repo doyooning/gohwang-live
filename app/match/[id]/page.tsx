@@ -31,7 +31,31 @@ export default async function MatchPage({
     notFound()
   }
 
+  const homeTeamPromise = match.home_team_id
+    ? supabase.from("teams").select("name").eq("id", match.home_team_id).single()
+    : Promise.resolve({ data: null, error: null })
+  const awayTeamPromise = match.away_team_id
+    ? supabase.from("teams").select("name").eq("id", match.away_team_id).single()
+    : Promise.resolve({ data: null, error: null })
+
+  const [homeTeamResult, awayTeamResult] = await Promise.all([
+    homeTeamPromise,
+    awayTeamPromise,
+  ])
+
+  const homeTeamName = homeTeamResult.data?.name || match.home_team || "홈팀"
+  const awayTeamName = awayTeamResult.data?.name || match.away_team || "원정팀"
+
   const videoId = extractYouTubeId(match.youtube_url)
+  const normalizedStatus = String(match.status || "").toLowerCase()
+  const headerStatus: "live" | "finished" | "upcoming" =
+    normalizedStatus === "live"
+      ? "live"
+      : normalizedStatus === "finished"
+      ? "finished"
+      : "upcoming"
+  const matchTimeLabel =
+    headerStatus === "live" ? "LIVE" : headerStatus === "finished" ? "종료" : "예정"
 
   return (
     <div className="h-screen bg-background overflow-hidden flex flex-col lg:flex-row">
@@ -53,12 +77,12 @@ export default async function MatchPage({
 
         {/* Score Header */}
         <ScoreHeader
-          homeTeam={match.home_team}
-          awayTeam={match.away_team}
+          homeTeam={homeTeamName}
+          awayTeam={awayTeamName}
           homeScore={match.home_score}
           awayScore={match.away_score}
-          matchTime={match.status === "live" ? "LIVE" : undefined}
-          status={match.status as "live" | "scheduled" | "finished"}
+          matchTime={matchTimeLabel}
+          status={headerStatus}
         />
 
         {/* Video Player */}
