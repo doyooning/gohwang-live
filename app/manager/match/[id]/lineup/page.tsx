@@ -59,6 +59,9 @@ interface LineupPlayer {
   role: 'STARTER' | 'SUBSTITUTE';
 }
 
+const sortLineupPlayersByNumber = (players: LineupPlayer[]) =>
+  [...players].sort((a, b) => a.number - b.number);
+
 const FORMATIONS: Formation[] = ['4-3-3', '4-2-3-1', '3-4-3'];
 
 // Helper to convert team side from internal format to database enum
@@ -248,7 +251,10 @@ export default function LineupManagementPage() {
           },
         );
 
-        setLineupPlayers({ home: homePlayers, away: awayPlayers });
+      setLineupPlayers({
+        home: sortLineupPlayersByNumber(homePlayers),
+        away: sortLineupPlayersByNumber(awayPlayers),
+      });
       }
 
       setLoading(false);
@@ -257,15 +263,19 @@ export default function LineupManagementPage() {
     fetchData();
   }, [isLoading, user, matchId, supabase]);
 
-  const currentPlayers = lineupPlayers[activeTeam];
+  const currentPlayers = sortLineupPlayersByNumber(lineupPlayers[activeTeam]);
   const currentTeamPlayers = teamPlayers[activeTeam];
-  const starters = currentPlayers.filter((p) => p.role === 'STARTER');
-  const substitutes = currentPlayers.filter((p) => p.role === 'SUBSTITUTE');
+  const starters = sortLineupPlayersByNumber(
+    currentPlayers.filter((p) => p.role === 'STARTER'),
+  );
+  const substitutes = sortLineupPlayersByNumber(
+    currentPlayers.filter((p) => p.role === 'SUBSTITUTE'),
+  );
 
   // Players not yet in lineup
-  const availablePlayers = currentTeamPlayers.filter(
-    (tp) => !currentPlayers.some((lp) => lp.teamPlayerId === tp.id),
-  );
+  const availablePlayers = [...currentTeamPlayers]
+    .filter((tp) => !currentPlayers.some((lp) => lp.teamPlayerId === tp.id))
+    .sort((a, b) => (a.jersey_number || 0) - (b.jersey_number || 0));
 
   const getPositionColor = (position: string | null) => {
     switch (position) {

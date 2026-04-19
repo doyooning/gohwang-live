@@ -1,4 +1,4 @@
-import Link from "next/link"
+﻿import Link from "next/link"
 import { notFound } from "next/navigation"
 import { ChevronLeft } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
@@ -6,11 +6,22 @@ import { ScoreHeader } from "@/components/match/score-header"
 import { VideoPlayer } from "@/components/match/video-player"
 import { MatchTabs } from "@/components/match/match-tabs"
 
-// Helper to extract YouTube video ID from URL
 function extractYouTubeId(url: string | null): string | undefined {
   if (!url) return undefined
   const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/)
   return match ? match[1] : undefined
+}
+
+function parseIso(value?: string | null): Date | null {
+  if (!value) return null
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function elapsedMinutes(start?: string | null, end = new Date()) {
+  const s = parseIso(start)
+  if (!s) return 0
+  return Math.max(0, Math.floor((end.getTime() - s.getTime()) / 60000))
 }
 
 export default async function MatchPage({
@@ -46,22 +57,74 @@ export default async function MatchPage({
   const homeTeamName = homeTeamResult.data?.name || match.home_team || "홈팀"
   const awayTeamName = awayTeamResult.data?.name || match.away_team || "원정팀"
 
+  const { data: matchEvents } = await supabase
+    .from("match_events")
+    .select("event_type, team_side, created_at")
+    .eq("match_id", id)
+    .in("event_type", [
+      "half_start",
+      "half_end",
+      "second_half_start",
+      "second_half_end",
+      "extra_time_start",
+      "extra_time_end",
+      "shootout_goal",
+      "shootout_missed",
+    ])
+    .order("created_at", { ascending: true })
+
+  const timeMarks: {
+    first_half_start?: string
+    first_half_end?: string
+    second_half_start?: string
+    second_half_end?: string
+    extra_start?: string
+    extra_end?: string
+  } = {}
+  let shootoutHome = 0
+  let shootoutAway = 0
+
+  ;(matchEvents || []).forEach((event: any) => {
+    if (event.event_type === "half_start") timeMarks.first_half_start = event.created_at
+    if (event.event_type === "half_end") timeMarks.first_half_end = event.created_at
+    if (event.event_type === "second_half_start") timeMarks.second_half_start = event.created_at
+    if (event.event_type === "second_half_end") timeMarks.second_half_end = event.created_at
+    if (event.event_type === "extra_time_start") timeMarks.extra_start = event.created_at
+    if (event.event_type === "extra_time_end") timeMarks.extra_end = event.created_at
+    if (event.event_type === "shootout_goal" && event.team_side === "HOME") shootoutHome += 1
+    if (event.event_type === "shootout_goal" && event.team_side === "AWAY") shootoutAway += 1
+  })
+
   const videoId = extractYouTubeId(match.youtube_url)
   const normalizedStatus = String(match.status || "").toLowerCase()
-  const headerStatus: "live" | "finished" | "upcoming" =
+  const headerStatus: "live" | "ended" | "upcoming" =
     normalizedStatus === "live"
       ? "live"
-      : normalizedStatus === "finished"
-      ? "finished"
+      : normalizedStatus === "ended"
+      ? "ended"
       : "upcoming"
+
   const matchTimeLabel =
-    headerStatus === "live" ? "LIVE" : headerStatus === "finished" ? "종료" : "예정"
+    headerStatus === "live"
+      ? timeMarks.extra_start && !timeMarks.extra_end
+        ? `연장 ${elapsedMinutes(timeMarks.extra_start)}'`
+        : timeMarks.second_half_start && !timeMarks.second_half_end
+        ? `후반 ${elapsedMinutes(timeMarks.second_half_start)}'`
+        : timeMarks.first_half_start && !timeMarks.first_half_end
+        ? `전반 ${elapsedMinutes(timeMarks.first_half_start)}'`
+        : "LIVE"
+      : headerStatus === "ended"
+      ? "종료"
+      : "예정"
+
+  const shootoutScoreLabel =
+    shootoutHome + shootoutAway > 0 ? `${shootoutHome}-${shootoutAway}` : undefined
+  const shootoutWinnerSide =
+    shootoutHome > shootoutAway ? "home" : shootoutAway > shootoutHome ? "away" : null
 
   return (
     <div className="h-screen bg-background overflow-hidden flex flex-col lg:flex-row">
-      {/* Left Section: Video + Score (Mobile: top, Desktop: left) */}
       <div className="flex flex-col lg:flex-1 lg:h-full">
-        {/* Header */}
         <div className="bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 border-b border-border lg:border-r">
           <div className="flex items-center gap-2 px-2 py-2">
             <Link
@@ -75,17 +138,17 @@ export default async function MatchPage({
           </div>
         </div>
 
-        {/* Score Header */}
         <ScoreHeader
           homeTeam={homeTeamName}
           awayTeam={awayTeamName}
           homeScore={match.home_score}
           awayScore={match.away_score}
           matchTime={matchTimeLabel}
+          shootoutScoreLabel={shootoutScoreLabel}
+          shootoutWinnerSide={shootoutWinnerSide}
           status={headerStatus}
         />
 
-        {/* Video Player */}
         <div className="lg:flex-1 lg:flex lg:items-center lg:bg-black">
           <div className="w-full lg:max-h-full">
             <VideoPlayer videoId={videoId} />
@@ -93,7 +156,6 @@ export default async function MatchPage({
         </div>
       </div>
 
-      {/* Right Section: Tabs (Mobile: bottom with scroll, Desktop: right sidebar) */}
       <div className="flex-1 lg:flex-none lg:w-[400px] xl:w-[450px] lg:h-full lg:border-l lg:border-border overflow-hidden">
         <MatchTabs videoId={videoId} matchId={match.id} />
       </div>

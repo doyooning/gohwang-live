@@ -81,6 +81,24 @@ type TimeEventType =
   | 'extra_time_start'
   | 'extra_time_end';
 
+const TIME_EVENT_TO_TIME_TYPE: Record<TimeEventType, TimeType> = {
+  half_start: 'first_half_start',
+  half_end: 'first_half_end',
+  second_half_start: 'second_half_start',
+  second_half_end: 'second_half_end',
+  extra_time_start: 'extra_start',
+  extra_time_end: 'extra_end',
+};
+
+const TIME_TYPE_TO_TIME_EVENT: Record<TimeType, TimeEventType> = {
+  first_half_start: 'half_start',
+  first_half_end: 'half_end',
+  second_half_start: 'second_half_start',
+  second_half_end: 'second_half_end',
+  extra_start: 'extra_time_start',
+  extra_end: 'extra_time_end',
+};
+
 export default function MatchControlPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
@@ -133,6 +151,108 @@ export default function MatchControlPage() {
   >('first');
   const [clockTick, setClockTick] = useState(0);
 
+  const isTimeEventType = (eventType: string): eventType is TimeEventType => {
+    return eventType in TIME_EVENT_TO_TIME_TYPE;
+  };
+
+  const applyTimeStateFromEvents = (eventRows: MatchEvent[]) => {
+    const nextTimes: MatchTimes = { ...EMPTY_MATCH_TIMES };
+    let latestTimeEvent: { type: TimeType; eventId: string } | null = null;
+    const sortedEvents = [...eventRows].sort(
+      (a, b) =>
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    );
+
+    sortedEvents.forEach((event) => {
+      if (!isTimeEventType(event.event_type)) return;
+      const mappedType = TIME_EVENT_TO_TIME_TYPE[event.event_type];
+      nextTimes[mappedType] = event.created_at;
+      latestTimeEvent = { type: mappedType, eventId: event.id };
+    });
+
+    setMatchTimes(nextTimes);
+    setLastTimeRecord(latestTimeEvent);
+  };
+
+  const refreshEvents = useCallback(async () => {
+    const { data } = await supabase
+      .from('match_events')
+      .select('*')
+      .eq('match_id', matchId)
+      .order('created_at', { ascending: false })
+      .order('minute', { ascending: false });
+
+    const nextEvents = (data || []) as MatchEvent[];
+    setEvents(nextEvents);
+    applyTimeStateFromEvents(nextEvents);
+    return nextEvents;
+  }, [matchId, supabase]);
+
+  const syncMatchScoreFromEvents = useCallback(async () => {
+    const { data: goalEvents, error } = await supabase
+      .from('match_events')
+      .select('team_side')
+      .eq('match_id', matchId)
+      .eq('event_type', 'goal');
+
+    if (error) {
+      console.error('Error syncing match score from events:', error);
+      return;
+    }
+
+    const homeScore = (goalEvents || []).filter(
+      (event: any) => event.team_side === 'HOME',
+    ).length;
+    const awayScore = (goalEvents || []).filter(
+      (event: any) => event.team_side === 'AWAY',
+    ).length;
+
+    const { error: updateError } = await supabase
+      .from('matches')
+      .update({ home_score: homeScore, away_score: awayScore })
+      .eq('id', matchId);
+
+    if (updateError) {
+      console.error('Error updating match score:', updateError);
+      return;
+    }
+
+    setMatch((prev) =>
+      prev ? { ...prev, home_score: homeScore, away_score: awayScore } : prev,
+    );
+  }, [matchId, supabase]);
+
+  const applySubstitutionRoles = useCallback(
+    async (
+      subInPlayerId: string | null | undefined,
+      subOutPlayerId: string | null | undefined,
+      mode: 'apply' | 'revert',
+    ) => {
+      if (!subInPlayerId || !subOutPlayerId) return { error: null };
+
+      const inRole = mode === 'apply' ? 'STARTER' : 'SUBSTITUTE';
+      const outRole = mode === 'apply' ? 'SUBSTITUTE' : 'STARTER';
+
+      const [{ error: inError }, { error: outError }] = await Promise.all([
+        supabase
+          .from('match_lineup_players')
+          .update({ lineup_role: inRole })
+          .eq('id', subInPlayerId),
+        supabase
+          .from('match_lineup_players')
+          .update({ lineup_role: outRole })
+          .eq('id', subOutPlayerId),
+      ]);
+
+      if (inError || outError) {
+        return { error: inError || outError };
+      }
+
+      return { error: null };
+    },
+    [supabase],
+  );
+
   // Auth guard
   useEffect(() => {
     if (isLoading) return;
@@ -152,6 +272,7 @@ export default function MatchControlPage() {
           .from('match_events')
           .select('*')
           .eq('match_id', matchId)
+          .order('created_at', { ascending: false })
           .order('minute', { ascending: false }),
       ]);
 
@@ -184,34 +305,37 @@ export default function MatchControlPage() {
         });
       }
       if (eventsResult.data) {
-        setEvents(eventsResult.data);
+        const nextEvents = eventsResult.data as MatchEvent[];
+        setEvents(nextEvents);
+        applyTimeStateFromEvents(nextEvents);
 
-        const eventToTimeType: Partial<Record<TimeEventType, TimeType>> = {
-          half_start: 'first_half_start',
-          half_end: 'first_half_end',
-          second_half_start: 'second_half_start',
-          second_half_end: 'second_half_end',
-          extra_time_start: 'extra_start',
-          extra_time_end: 'extra_end',
-        };
+        if (matchResult.data) {
+          const homeGoals = nextEvents.filter(
+            (event) =>
+              event.event_type === 'goal' && event.team_side === 'HOME',
+          ).length;
+          const awayGoals = nextEvents.filter(
+            (event) =>
+              event.event_type === 'goal' && event.team_side === 'AWAY',
+          ).length;
 
-        const nextTimes: MatchTimes = { ...EMPTY_MATCH_TIMES };
-        let latestTimeEvent: { type: TimeType; eventId: string } | null = null;
-        const sortedEvents = [...eventsResult.data].sort(
-          (a, b) =>
-            new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-        );
-
-        sortedEvents.forEach((event) => {
-          const mappedType = eventToTimeType[event.event_type as TimeEventType];
-          if (!mappedType) return;
-          nextTimes[mappedType] = event.created_at;
-          latestTimeEvent = { type: mappedType, eventId: event.id };
-        });
-
-        setMatchTimes(nextTimes);
-        setLastTimeRecord(latestTimeEvent);
+          if (
+            homeGoals !== matchResult.data.home_score ||
+            awayGoals !== matchResult.data.away_score
+          ) {
+            await supabase
+              .from('matches')
+              .update({ home_score: homeGoals, away_score: awayGoals })
+              .eq('id', matchId);
+            setMatch((prev) =>
+              prev
+                ? { ...prev, home_score: homeGoals, away_score: awayGoals }
+                : prev,
+            );
+          }
+        }
       } else {
+        setEvents([]);
         setMatchTimes(EMPTY_MATCH_TIMES);
         setLastTimeRecord(null);
       }
@@ -328,22 +452,28 @@ export default function MatchControlPage() {
   const getElapsedMinutes = (startValue: string, endDate = new Date()) => {
     const startDate = parseIsoTime(startValue);
     if (!startDate) return 0;
-    return Math.max(0, Math.floor((endDate.getTime() - startDate.getTime()) / 60000));
+    return Math.max(
+      0,
+      Math.floor((endDate.getTime() - startDate.getTime()) / 60000),
+    );
   };
 
   const getFirstHalfDuration = () => {
     if (matchTimes.first_half_end && matchTimes.first_half_start) {
       const halfEnd = parseIsoTime(matchTimes.first_half_end);
-      if (halfEnd) return getElapsedMinutes(matchTimes.first_half_start, halfEnd);
+      if (halfEnd)
+        return getElapsedMinutes(matchTimes.first_half_start, halfEnd);
     }
-    if (matchTimes.first_half_start) return getElapsedMinutes(matchTimes.first_half_start);
+    if (matchTimes.first_half_start)
+      return getElapsedMinutes(matchTimes.first_half_start);
     return 0;
   };
 
   const getSecondHalfDuration = () => {
     if (matchTimes.second_half_end && matchTimes.second_half_start) {
       const secondEnd = parseIsoTime(matchTimes.second_half_end);
-      if (secondEnd) return getElapsedMinutes(matchTimes.second_half_start, secondEnd);
+      if (secondEnd)
+        return getElapsedMinutes(matchTimes.second_half_start, secondEnd);
     }
     if (matchTimes.second_half_start)
       return getElapsedMinutes(matchTimes.second_half_start);
@@ -352,6 +482,10 @@ export default function MatchControlPage() {
 
   const getLiveClockLabel = () => {
     void clockTick;
+    if (matchTimes.extra_end) return '연장 ET';
+    if (matchTimes.extra_start) {
+      return `연장 ${getElapsedMinutes(matchTimes.extra_start)}'`;
+    }
     if (matchTimes.second_half_end) return '후반 FT';
     if (matchTimes.second_half_start) {
       return `후반 ${getElapsedMinutes(matchTimes.second_half_start)}'`;
@@ -361,6 +495,39 @@ export default function MatchControlPage() {
       return `전반 ${getElapsedMinutes(matchTimes.first_half_start)}'`;
     }
     return 'LIVE';
+  };
+
+  const getCurrentMatchMinute = () => {
+    const firstHalfDuration = getFirstHalfDuration();
+    const secondHalfDuration = getSecondHalfDuration();
+    const regularTotal = firstHalfDuration + secondHalfDuration;
+
+    if (matchTimes.extra_start && !matchTimes.extra_end) {
+      return regularTotal + getElapsedMinutes(matchTimes.extra_start);
+    }
+    if (matchTimes.second_half_start && !matchTimes.second_half_end) {
+      return (
+        firstHalfDuration + getElapsedMinutes(matchTimes.second_half_start)
+      );
+    }
+    if (matchTimes.first_half_start && !matchTimes.first_half_end) {
+      return getElapsedMinutes(matchTimes.first_half_start);
+    }
+    if (matchTimes.second_half_end) return regularTotal;
+    if (matchTimes.first_half_end) return firstHalfDuration;
+    return 0;
+  };
+
+  const getPenaltyMinute = () => {
+    const firstHalfDuration = getFirstHalfDuration();
+    const secondHalfDuration = getSecondHalfDuration();
+    const regularTotal = firstHalfDuration + secondHalfDuration;
+    if (!matchTimes.extra_end) return getCurrentMatchMinute();
+
+    const extraEndDate = parseIsoTime(matchTimes.extra_end);
+    if (!extraEndDate) return getCurrentMatchMinute();
+    const extraDuration = getElapsedMinutes(matchTimes.extra_start, extraEndDate);
+    return regularTotal + extraDuration;
   };
 
   const formatStoredTime = (value: string) => {
@@ -404,6 +571,14 @@ export default function MatchControlPage() {
     const supabase = createClient() as any;
     const minute = inputMinute ? parseInt(inputMinute) : 0;
     const teamPlayers = getPlayers(selectedTeam as 'home' | 'away');
+    const starterPlayers = getPlayersByRole(
+      selectedTeam as 'home' | 'away',
+      'STARTER',
+    );
+    const substitutePlayers = getPlayersByRole(
+      selectedTeam as 'home' | 'away',
+      'SUBSTITUTE',
+    );
     const player = teamPlayers.find((p) => p.id === selectedPlayer);
 
     if (!player) return;
@@ -412,6 +587,33 @@ export default function MatchControlPage() {
       activePanel === 'yellow_card' || activePanel === 'red_card'
         ? cardType
         : activePanel!;
+
+    if (
+      (activePanel === 'goal' ||
+        activePanel === 'yellow_card' ||
+        activePanel === 'red_card') &&
+      !starterPlayers.some((p) => p.id === selectedPlayer)
+    ) {
+      toast({
+        title: '선수 선택 오류',
+        description:
+          '득점/경고/퇴장은 선발(STARTER) 선수만 선택할 수 있습니다.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (
+      activePanel === 'substitution' &&
+      !substitutePlayers.some((p) => p.id === selectedPlayer)
+    ) {
+      toast({
+        title: '선수 선택 오류',
+        description: '교체 IN은 교체(SUBSTITUTE) 선수만 선택할 수 있습니다.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     let description = '';
     let assistPlayerId = null;
@@ -432,11 +634,18 @@ export default function MatchControlPage() {
       }
     }
     if (activePanel === 'substitution' && selectedPlayerOut) {
-      const playerOut = teamPlayers.find((p) => p.id === selectedPlayerOut);
+      const playerOut = starterPlayers.find((p) => p.id === selectedPlayerOut);
       if (playerOut) {
         description = playerOut.name;
         substitutedInPlayerId = player.id;
         substitutedOutPlayerId = playerOut.id;
+      } else {
+        toast({
+          title: '선수 선택 오류',
+          description: '교체 OUT은 선발(STARTER) 선수만 선택할 수 있습니다.',
+          variant: 'destructive',
+        });
+        return;
       }
     }
 
@@ -450,24 +659,120 @@ export default function MatchControlPage() {
       assist_player_id: assistPlayerId,
       sub_in_player_id: substitutedInPlayerId,
       sub_out_player_id: substitutedOutPlayerId,
+      created_at: new Date().toISOString(),
     };
 
-    const { error } = await supabase.from('match_events').insert(payload);
+    const { data: insertedEvent, error } = await supabase
+      .from('match_events')
+      .insert(payload)
+      .select('id')
+      .single();
 
     if (error) {
       console.error('Error saving event:', error);
       return;
     }
 
-    // Update score for goals
-    if (activePanel === 'goal') {
-      const updateData =
-        selectedTeam === 'home'
-          ? { home_score: match.home_score + 1 }
-          : { away_score: match.away_score + 1 };
+    if (
+      eventType === 'substitution' &&
+      substitutedInPlayerId &&
+      substitutedOutPlayerId
+    ) {
+      const { error: lineupError } = await applySubstitutionRoles(
+        substitutedInPlayerId,
+        substitutedOutPlayerId,
+        'apply',
+      );
 
-      await supabase.from('matches').update(updateData).eq('id', matchId);
+      if (lineupError) {
+        console.error('Error applying substitution lineup roles:', lineupError);
+        if (insertedEvent?.id) {
+          await supabase
+            .from('match_events')
+            .delete()
+            .eq('id', insertedEvent.id);
+        }
+        toast({
+          title: '교체 반영 실패',
+          description: lineupError.message,
+          variant: 'destructive',
+        });
+        return;
+      }
     }
+
+    const latestEvent: {
+      event_type: string;
+      sub_in_player_id: string | null;
+      sub_out_player_id: string | null;
+    } = {
+      event_type: '',
+      sub_in_player_id: null,
+      sub_out_player_id: null,
+    };
+
+    if (false && latestEvent.event_type === 'substitution') {
+      const { error: revertError } = await applySubstitutionRoles(
+        latestEvent.sub_in_player_id,
+        latestEvent.sub_out_player_id,
+        'revert',
+      );
+
+      if (revertError) {
+        console.error(
+          'Error reverting substitution lineup roles:',
+          revertError,
+        );
+        toast({
+          title: '교체 되돌리기 실패',
+          description: revertError.message,
+          variant: 'destructive',
+        });
+      }
+    }
+
+    if (false) {
+      const { error: revertError } = await applySubstitutionRoles(
+        latestEvent.sub_in_player_id,
+        latestEvent.sub_out_player_id,
+        'revert',
+      );
+
+      if (revertError) {
+        console.error(
+          'Error reverting substitution lineup roles:',
+          revertError,
+        );
+        toast({
+          title: '교체 되돌리기 실패',
+          description: revertError.message,
+          variant: 'destructive',
+        });
+      }
+    }
+
+    if (false && latestEvent.event_type === 'substitution') {
+      const { error: revertError } = await applySubstitutionRoles(
+        latestEvent.sub_in_player_id,
+        latestEvent.sub_out_player_id,
+        'revert',
+      );
+
+      if (revertError) {
+        console.error(
+          'Error reverting substitution lineup roles:',
+          revertError,
+        );
+        toast({
+          title: '교체 되돌리기 실패',
+          description: revertError.message,
+          variant: 'destructive',
+        });
+      }
+    }
+
+    await refreshEvents();
+    await syncMatchScoreFromEvents();
 
     resetForm();
   };
@@ -575,21 +880,12 @@ export default function MatchControlPage() {
     };
 
     const timeDescription = `${timeLabels[timeType]} (${nowDisplay})`;
-    const eventTypeMap: Record<TimeType, TimeEventType> = {
-      first_half_start: 'half_start',
-      first_half_end: 'half_end',
-      second_half_start: 'second_half_start',
-      second_half_end: 'second_half_end',
-      extra_start: 'extra_time_start',
-      extra_end: 'extra_time_end',
-    };
-
-    const timeEventType = eventTypeMap[timeType];
+    const timeEventType = TIME_TYPE_TO_TIME_EVENT[timeType];
 
     const { error: insertError } = await supabase.from('match_events').insert({
       match_id: matchId,
       event_type: timeEventType,
-      team_side: 'HOME',
+      team_side: 'NONE',
       player_id: null,
       minute: minuteValues[timeType],
       description: timeDescription,
@@ -629,55 +925,117 @@ export default function MatchControlPage() {
     }
 
     // 이벤트 목록 새로고침
-    const { data } = await supabase
-      .from('match_events')
-      .select('*')
-      .eq('match_id', matchId)
-      .order('minute', { ascending: false })
-      .order('created_at', { ascending: false });
-    if (data) setEvents(data);
+    await refreshEvents();
+    await syncMatchScoreFromEvents();
   };
 
-  const handleUndoTimeRecord = async () => {
-    if (!lastTimeRecord) return;
+  const handleUndoLatestEvent = async () => {
+    if (events.length === 0) return;
 
     // DB에서 이벤트 삭제
-    await supabase
+    const latestEvent = [...events].sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    )[0];
+
+    if (latestEvent.event_type === 'substitution') {
+      const { error: revertError } = await applySubstitutionRoles(
+        latestEvent.sub_in_player_id,
+        latestEvent.sub_out_player_id,
+        'revert',
+      );
+
+      if (revertError) {
+        console.error(
+          'Error reverting substitution lineup roles:',
+          revertError,
+        );
+        toast({
+          title: '교체 되돌리기 실패',
+          description: revertError.message,
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
+
+    const { error } = await supabase
       .from('match_events')
       .delete()
-      .eq('id', lastTimeRecord.eventId);
+      .eq('id', latestEvent.id);
 
     // 로컬 상태 초기화
-    setMatchTimes((prev) => ({ ...prev, [lastTimeRecord.type]: '' }));
-    setLastTimeRecord(null);
+    if (error) {
+      console.error('Error undoing latest event:', error);
+      toast({
+        title: '되돌리기 실패',
+        description: error.message,
+        variant: 'destructive',
+      });
+      return;
+    }
+    await refreshEvents();
 
     // 이벤트 목록 새로고침
-    const { data } = await supabase
-      .from('match_events')
-      .select('*')
-      .eq('match_id', matchId)
-      .order('minute', { ascending: false })
-      .order('created_at', { ascending: false });
-    if (data) setEvents(data);
+    await syncMatchScoreFromEvents();
   };
 
-  const handlePenaltyResult = (result: 'success' | 'fail') => {
+  const handlePenaltyResult = async (result: 'success' | 'fail') => {
+    const currentRound = currentPenaltyRound;
+    const currentTeam = currentPenaltyTeam;
+    const firstTeamSide = penaltyFirstTeam === 'home' ? 'HOME' : 'AWAY';
+    const kickingTeamSide =
+      currentTeam === 'first'
+        ? firstTeamSide
+        : firstTeamSide === 'HOME'
+          ? 'AWAY'
+          : 'HOME';
+    const kickingTeamName =
+      kickingTeamSide === 'HOME' ? teamNames.home : teamNames.away;
+    const resultLabel = result === 'success' ? '성공' : '실패';
     // 현재 키커 결과 기록
     setPenaltyKicks((prev) =>
       prev.map((kick) =>
-        kick.order === currentPenaltyRound && kick.team === currentPenaltyTeam
+        kick.order === currentRound && kick.team === currentTeam
           ? { ...kick, result }
           : kick,
       ),
     );
 
+    const penaltyDescription = `승부차기 ${currentRound}번 키커 - ${kickingTeamName}: ${resultLabel}`;
+    const { error: penaltyEventError } = await supabase
+      .from('match_events')
+      .insert({
+        match_id: matchId,
+        event_type: result === 'success' ? 'shootout_goal' : 'shootout_missed',
+        team_side: kickingTeamSide,
+        player_id: null,
+        minute: getPenaltyMinute(),
+        description: penaltyDescription,
+        assist_player_id: null,
+        sub_in_player_id: null,
+        sub_out_player_id: null,
+        created_at: new Date().toISOString(),
+      });
+
+    if (penaltyEventError) {
+      console.error('Error saving penalty record:', penaltyEventError);
+      toast({
+        title: '승부차기 기록 실패',
+        description: penaltyEventError.message,
+        variant: 'destructive',
+      });
+    } else {
+      await refreshEvents();
+    }
+
     // 다음 키커로 자동 이동
-    if (currentPenaltyTeam === 'first') {
+    if (currentTeam === 'first') {
       // 선공 → 후공
       setCurrentPenaltyTeam('second');
     } else {
       // 후공 → 다음 라운드 선공
-      const nextRound = currentPenaltyRound + 1;
+      const nextRound = currentRound + 1;
       // 새 라운드 추가 (기존에 없으면)
       const hasNextRound = penaltyKicks.some((k) => k.order === nextRound);
       if (!hasNextRound) {
@@ -782,6 +1140,8 @@ export default function MatchControlPage() {
       case 'extra':
       case 'extra_time_start':
       case 'extra_time_end':
+      case 'shootout_goal':
+      case 'shootout_missed':
         return <Timer className="size-4" />;
       default:
         return null;
@@ -789,8 +1149,7 @@ export default function MatchControlPage() {
   };
 
   const getEventLabel = (event: MatchEvent) => {
-    const scorerName =
-      getPlayerNameByLineupPlayerId(event.player_id) || '';
+    const scorerName = getPlayerNameByLineupPlayerId(event.player_id) || '';
     const subInName =
       getPlayerNameByLineupPlayerId(event.sub_in_player_id) || '';
     const subOutName =
@@ -808,7 +1167,9 @@ export default function MatchControlPage() {
       case 'red_card':
         return `${scorerName} 퇴장`;
       case 'substitution':
-        return subOutName ? `${subOutName} OUT / ${subInName} IN` : `${subInName} IN`;
+        return subOutName
+          ? `${subOutName} OUT / ${subInName} IN`
+          : `${subInName} IN`;
       case 'half_start':
       case 'half_end':
       case 'second_half_start':
@@ -839,6 +1200,13 @@ export default function MatchControlPage() {
     penaltyFirstTeam === 'home' ? teamNames.home : teamNames.away;
   const secondTeamName =
     penaltyFirstTeam === 'home' ? teamNames.away : teamNames.home;
+  const shootoutHomeScore = events.filter(
+    (event) => event.event_type === 'shootout_goal' && event.team_side === 'HOME',
+  ).length;
+  const shootoutAwayScore = events.filter(
+    (event) => event.event_type === 'shootout_goal' && event.team_side === 'AWAY',
+  ).length;
+  const hasShootoutResult = shootoutHomeScore + shootoutAwayScore > 0;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -925,10 +1293,17 @@ export default function MatchControlPage() {
               <p className="text-3xl font-bold text-foreground">
                 {match.home_score} : {match.away_score}
               </p>
+              {match.status.toLowerCase() === 'ended' &&
+                hasShootoutResult && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    PSO {shootoutHomeScore}-{shootoutAwayScore}
+                  </p>
+                )}
               {match.status.toLowerCase() === 'live' && (
                 <div className="flex items-center justify-center gap-1 text-primary text-sm font-medium mt-1">
                   <Clock className="size-3" />
-                  {getLiveClockLabel() /* 
+                  {
+                    getLiveClockLabel() /* 
                     // 경기 진행 시간 계산
                     const now = new Date();
                     if (
@@ -965,7 +1340,8 @@ export default function MatchControlPage() {
                       return `${minutes}'`;
                     }
                     return 'LIVE';
-                  */}
+                  */
+                  }
                 </div>
               )}
             </div>
@@ -986,8 +1362,12 @@ export default function MatchControlPage() {
             variant={activePanel === 'goal' ? 'default' : 'secondary'}
             className="h-14 flex-col gap-1"
             onClick={() => {
+              const nextPanel = activePanel === 'goal' ? null : 'goal';
               resetForm();
-              setActivePanel(activePanel === 'goal' ? null : 'goal');
+              setActivePanel(nextPanel);
+              if (nextPanel) {
+                setInputMinute(String(getCurrentMatchMinute()));
+              }
               setShowTimePanel(false);
               setShowPenaltyPanel(false);
             }}
@@ -1004,12 +1384,15 @@ export default function MatchControlPage() {
             }
             className="h-14 flex-col gap-1"
             onClick={() => {
-              resetForm();
-              setActivePanel(
+              const nextPanel =
                 activePanel === 'yellow_card' || activePanel === 'red_card'
                   ? null
-                  : 'yellow_card',
-              );
+                  : 'yellow_card';
+              resetForm();
+              setActivePanel(nextPanel);
+              if (nextPanel) {
+                setInputMinute(String(getCurrentMatchMinute()));
+              }
               setShowTimePanel(false);
               setShowPenaltyPanel(false);
             }}
@@ -1022,10 +1405,13 @@ export default function MatchControlPage() {
             variant={activePanel === 'substitution' ? 'default' : 'secondary'}
             className="h-14 flex-col gap-1"
             onClick={() => {
+              const nextPanel =
+                activePanel === 'substitution' ? null : 'substitution';
               resetForm();
-              setActivePanel(
-                activePanel === 'substitution' ? null : 'substitution',
-              );
+              setActivePanel(nextPanel);
+              if (nextPanel) {
+                setInputMinute(String(getCurrentMatchMinute()));
+              }
               setShowTimePanel(false);
               setShowPenaltyPanel(false);
             }}
@@ -1070,11 +1456,11 @@ export default function MatchControlPage() {
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-foreground">경기 시간 기록</h3>
             <div className="flex items-center gap-2">
-              {lastTimeRecord && (
+              {false && (
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={handleUndoTimeRecord}
+                  onClick={handleUndoLatestEvent}
                 >
                   <Undo2 className="size-4 mr-1" />
                   되돌리기
@@ -1259,7 +1645,7 @@ export default function MatchControlPage() {
           </div>
 
           {/* Undo button */}
-          {canUndoPenalty() && (
+          {false && canUndoPenalty() && (
             <Button
               variant="outline"
               className="w-full mb-4"
@@ -1421,7 +1807,10 @@ export default function MatchControlPage() {
                           selectedTeam as 'home' | 'away',
                           'SUBSTITUTE',
                         )
-                      : getPlayers(selectedTeam as 'home' | 'away')
+                      : getPlayersByRole(
+                          selectedTeam as 'home' | 'away',
+                          'STARTER',
+                        )
                     ).map((player) => (
                       <SelectItem key={player.id} value={player.id}>
                         #{player.number} {player.name}
@@ -1441,7 +1830,10 @@ export default function MatchControlPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">없음</SelectItem>
-                      {getPlayers(selectedTeam as 'home' | 'away')
+                      {getPlayersByRole(
+                        selectedTeam as 'home' | 'away',
+                        'STARTER',
+                      )
                         .filter((p) => p.id !== selectedPlayer)
                         .map((player) => (
                           <SelectItem key={player.id} value={player.id}>
@@ -1509,6 +1901,14 @@ export default function MatchControlPage() {
 
       {/* Event Timeline */}
       <main className="flex-1 px-4 py-4">
+        {events.length > 0 && (
+          <div className="flex justify-end mb-2">
+            <Button variant="outline" size="sm" onClick={handleUndoLatestEvent}>
+              <Undo2 className="size-4 mr-1" />
+              되돌리기
+            </Button>
+          </div>
+        )}
         <h3 className="text-sm font-semibold text-muted-foreground mb-3">
           이벤트 타임라인
         </h3>
@@ -1518,9 +1918,12 @@ export default function MatchControlPage() {
           </div>
         ) : (
           <div className="space-y-2">
-            {events.map((event) => (
+            {events.map((event, index) => (
               <div
-                key={event.id}
+                key={
+                  event.id ||
+                  `${event.created_at}-${event.event_type}-${event.player_id || 'none'}-${index}`
+                }
                 className="flex items-center gap-3 bg-card border border-border rounded-lg p-3"
               >
                 <div className="flex items-center justify-center size-8 rounded-full bg-secondary">
@@ -1533,7 +1936,9 @@ export default function MatchControlPage() {
                   <p className="text-xs text-muted-foreground">
                     {event.team_side === 'HOME'
                       ? teamNames.home
-                      : teamNames.away}
+                      : event.team_side === 'AWAY'
+                        ? teamNames.away
+                        : '-'}
                   </p>
                 </div>
                 <div className="text-sm font-medium text-primary">

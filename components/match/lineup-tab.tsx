@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
@@ -22,6 +22,9 @@ interface TeamLineup {
   substitutes: Player[];
 }
 
+const sortByNumberAsc = (players: Player[]) =>
+  [...players].sort((a, b) => a.number - b.number);
+
 function PlayerRow({ player }: { player: Player }) {
   return (
     <div className="flex items-center justify-between py-2 px-3">
@@ -32,9 +35,7 @@ function PlayerRow({ player }: { player: Player }) {
         <span className="text-sm text-foreground">
           {player.name}
           {player.isCaptain && (
-            <span className="ml-1.5 text-[10px] text-accent font-bold">
-              (C)
-            </span>
+            <span className="ml-1.5 text-[10px] text-accent font-bold">(C)</span>
           )}
         </span>
       </div>
@@ -52,9 +53,7 @@ function TeamSection({
   return (
     <div className={`flex-1 ${isAway ? 'border-l border-border' : ''}`}>
       <div className="px-3 py-2 bg-secondary/50">
-        <div className="text-sm font-bold text-foreground">
-          {lineup.teamName}
-        </div>
+        <div className="text-sm font-bold text-foreground">{lineup.teamName}</div>
       </div>
 
       <div className="px-1">
@@ -62,26 +61,18 @@ function TeamSection({
           선발 ({lineup.starters.length}명)
         </div>
         {lineup.starters.length === 0 ? (
-          <div className="text-xs text-muted-foreground text-center py-4">
-            라인업 없음
-          </div>
+          <div className="text-xs text-muted-foreground text-center py-4">라인업 없음</div>
         ) : (
-          lineup.starters.map((player) => (
-            <PlayerRow key={player.number} player={player} />
-          ))
+          lineup.starters.map((player) => <PlayerRow key={`${player.number}-${player.name}`} player={player} />)
         )}
 
         <div className="text-xs text-muted-foreground px-3 py-2 border-b border-border/50 mt-2">
           교체 ({lineup.substitutes.length}명)
         </div>
         {lineup.substitutes.length === 0 ? (
-          <div className="text-xs text-muted-foreground text-center py-4">
-            교체 선수 없음
-          </div>
+          <div className="text-xs text-muted-foreground text-center py-4">교체 선수 없음</div>
         ) : (
-          lineup.substitutes.map((player) => (
-            <PlayerRow key={player.number} player={player} />
-          ))
+          lineup.substitutes.map((player) => <PlayerRow key={`${player.number}-${player.name}`} player={player} />)
         )}
       </div>
     </div>
@@ -102,11 +93,7 @@ export function LineupTab({ matchId }: LineupTabProps) {
     const supabase = createClient() as any;
 
     async function fetchData() {
-      const matchResult = await supabase
-        .from('matches')
-        .select('*')
-        .eq('id', matchId)
-        .single();
+      const matchResult = await supabase.from('matches').select('*').eq('id', matchId).single();
       const { data: matchLineups } = await supabase
         .from('match_lineups')
         .select('id, team_side')
@@ -118,16 +105,12 @@ export function LineupTab({ matchId }: LineupTabProps) {
         const lineupIds = matchLineups.map((lineup: any) => lineup.id);
         const { data: lineupPlayersData } = await supabase
           .from('match_lineup_players')
-          .select(
-            'id, match_lineup_id, lineup_role, team_player:team_players!inner(name, jersey_number)',
-          )
+          .select('id, match_lineup_id, lineup_role, team_player:team_players!inner(name, jersey_number)')
           .in('match_lineup_id', lineupIds);
 
         fetchedLineups =
           lineupPlayersData?.map((lp: any) => {
-            const lineup = matchLineups.find(
-              (item: any) => item.id === lp.match_lineup_id,
-            );
+            const lineup = matchLineups.find((item: any) => item.id === lp.match_lineup_id);
             return {
               id: lp.id,
               match_id: matchId || '',
@@ -142,24 +125,13 @@ export function LineupTab({ matchId }: LineupTabProps) {
 
       if (matchResult.data) {
         const homeTeamPromise = matchResult.data.home_team_id
-          ? supabase
-              .from('teams')
-              .select('name')
-              .eq('id', matchResult.data.home_team_id)
-              .single()
+          ? supabase.from('teams').select('name').eq('id', matchResult.data.home_team_id).single()
           : Promise.resolve({ data: null, error: null });
         const awayTeamPromise = matchResult.data.away_team_id
-          ? supabase
-              .from('teams')
-              .select('name')
-              .eq('id', matchResult.data.away_team_id)
-              .single()
+          ? supabase.from('teams').select('name').eq('id', matchResult.data.away_team_id).single()
           : Promise.resolve({ data: null, error: null });
 
-        const [homeTeamResult, awayTeamResult] = await Promise.all([
-          homeTeamPromise,
-          awayTeamPromise,
-        ]);
+        const [homeTeamResult, awayTeamResult] = await Promise.all([homeTeamPromise, awayTeamPromise]);
 
         setMatch({
           ...matchResult.data,
@@ -173,7 +145,6 @@ export function LineupTab({ matchId }: LineupTabProps) {
 
     fetchData();
 
-    // Subscribe to realtime updates
     const lineupChannel = supabase
       .channel(`match-lineups-${matchId}`)
       .on(
@@ -221,22 +192,30 @@ export function LineupTab({ matchId }: LineupTabProps) {
 
   const homeLineup: TeamLineup = {
     teamName: match?.home_team || '홈팀',
-    starters: lineups
-      .filter((l) => l.team_side === 'HOME' && l.is_starter)
-      .map((l) => ({ number: l.jersey_number, name: l.player_name })),
-    substitutes: lineups
-      .filter((l) => l.team_side === 'HOME' && !l.is_starter)
-      .map((l) => ({ number: l.jersey_number, name: l.player_name })),
+    starters: sortByNumberAsc(
+      lineups
+        .filter((l) => l.team_side === 'HOME' && l.is_starter)
+        .map((l) => ({ number: l.jersey_number, name: l.player_name })),
+    ),
+    substitutes: sortByNumberAsc(
+      lineups
+        .filter((l) => l.team_side === 'HOME' && !l.is_starter)
+        .map((l) => ({ number: l.jersey_number, name: l.player_name })),
+    ),
   };
 
   const awayLineup: TeamLineup = {
     teamName: match?.away_team || '원정팀',
-    starters: lineups
-      .filter((l) => l.team_side === 'AWAY' && l.is_starter)
-      .map((l) => ({ number: l.jersey_number, name: l.player_name })),
-    substitutes: lineups
-      .filter((l) => l.team_side === 'AWAY' && !l.is_starter)
-      .map((l) => ({ number: l.jersey_number, name: l.player_name })),
+    starters: sortByNumberAsc(
+      lineups
+        .filter((l) => l.team_side === 'AWAY' && l.is_starter)
+        .map((l) => ({ number: l.jersey_number, name: l.player_name })),
+    ),
+    substitutes: sortByNumberAsc(
+      lineups
+        .filter((l) => l.team_side === 'AWAY' && !l.is_starter)
+        .map((l) => ({ number: l.jersey_number, name: l.player_name })),
+    ),
   };
 
   return (

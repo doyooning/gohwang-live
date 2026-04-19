@@ -1,50 +1,53 @@
-"use client"
+'use client';
 
-import Link from "next/link"
-import { MapPin } from "lucide-react"
-import { cn } from "@/lib/utils"
+import Link from 'next/link';
+import { MapPin } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
-type MatchStatus = "live" | "scheduled" | "finished"
+type MatchStatus = 'live' | 'scheduled' | 'ended';
 
 interface MatchCardProps {
-  id: string
-  homeTeam: string
-  awayTeam: string
-  homeScore?: number
-  awayScore?: number
-  scheduledTime?: string
-  venue: string
-  status: MatchStatus
+  id: string;
+  homeTeam: string;
+  awayTeam: string;
+  homeScore?: number;
+  awayScore?: number;
+  liveClockLabel?: string;
+  shootoutScoreLabel?: string;
+  shootoutWinnerSide?: 'home' | 'away' | null;
+  scheduledTime?: string;
+  venue: string;
+  status: MatchStatus;
 }
 
 function StatusBadge({ status }: { status: MatchStatus }) {
   const statusConfig = {
     live: {
-      label: "LIVE",
-      className: "bg-destructive text-destructive-foreground animate-pulse",
+      label: 'LIVE',
+      className: 'bg-destructive text-destructive-foreground animate-pulse',
     },
     scheduled: {
-      label: "예정",
-      className: "bg-muted text-muted-foreground",
+      label: '예정',
+      className: 'bg-muted text-muted-foreground',
     },
-    finished: {
-      label: "종료",
-      className: "bg-secondary text-secondary-foreground",
+    ended: {
+      label: '종료',
+      className: 'bg-secondary text-secondary-foreground',
     },
-  }
+  };
 
-  const config = statusConfig[status]
+  const config = statusConfig[status];
 
   return (
     <span
       className={cn(
-        "px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wide",
-        config.className
+        'px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wide',
+        config.className,
       )}
     >
       {config.label}
     </span>
-  )
+  );
 }
 
 export function MatchCard({
@@ -53,26 +56,46 @@ export function MatchCard({
   awayTeam,
   homeScore,
   awayScore,
+  liveClockLabel,
+  shootoutScoreLabel,
+  shootoutWinnerSide,
   scheduledTime,
   venue,
   status,
 }: MatchCardProps) {
-  const isLive = status === "live"
+  const isLive = status === 'live';
+  const isEnded = status === 'ended';
+  const isDrawInRegular =
+    homeScore !== undefined &&
+    awayScore !== undefined &&
+    homeScore === awayScore;
+  const homeWon =
+    homeScore !== undefined &&
+    awayScore !== undefined &&
+    (homeScore > awayScore ||
+      (isEnded && isDrawInRegular && shootoutWinnerSide === 'home'));
+  const awayWon =
+    homeScore !== undefined &&
+    awayScore !== undefined &&
+    (awayScore > homeScore ||
+      (isEnded && isDrawInRegular && shootoutWinnerSide === 'away'));
 
   return (
     <Link href={`/match/${id}`}>
       <article
         className={cn(
-          "block p-4 rounded-lg border transition-colors",
+          'block p-4 rounded-lg border transition-colors',
           isLive
-            ? "bg-card border-primary/50 shadow-lg shadow-primary/10"
-            : "bg-card border-border hover:border-muted-foreground/30"
+            ? 'bg-card border-primary/50 shadow-lg shadow-primary/10'
+            : 'bg-card border-border hover:border-muted-foreground/30',
         )}
       >
         <div className="flex items-center justify-between mb-3">
           <StatusBadge status={status} />
-          {status === "scheduled" && scheduledTime && (
-            <span className="text-sm text-muted-foreground">{scheduledTime}</span>
+          {status === 'scheduled' && scheduledTime && (
+            <span className="text-sm text-muted-foreground">
+              {scheduledTime}
+            </span>
           )}
         </div>
 
@@ -80,35 +103,60 @@ export function MatchCard({
           <div className="flex-1 min-w-0">
             <p
               className={cn(
-                "font-medium truncate",
-                isLive && homeScore !== undefined && awayScore !== undefined && homeScore > awayScore
-                  ? "text-primary"
-                  : "text-foreground"
+                'font-medium truncate',
+                isLive &&
+                  homeScore !== undefined &&
+                  awayScore !== undefined &&
+                  homeScore > awayScore
+                  ? 'text-primary'
+                  : 'text-foreground',
               )}
             >
               {homeTeam}
             </p>
           </div>
 
-          {status !== "scheduled" && homeScore !== undefined && awayScore !== undefined ? (
-            <div className="flex items-center gap-2 px-3">
-              <span
-                className={cn(
-                  "text-xl font-bold tabular-nums",
-                  isLive ? "text-foreground" : "text-muted-foreground"
-                )}
-              >
-                {homeScore}
-              </span>
-              <span className="text-muted-foreground">-</span>
-              <span
-                className={cn(
-                  "text-xl font-bold tabular-nums",
-                  isLive ? "text-foreground" : "text-muted-foreground"
-                )}
-              >
-                {awayScore}
-              </span>
+          {status !== 'scheduled' &&
+          homeScore !== undefined &&
+          awayScore !== undefined ? (
+            <div className="px-3 text-center">
+              <div className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    'text-xl font-bold tabular-nums',
+                    homeWon
+                      ? 'text-primary'
+                      : isLive
+                        ? 'text-foreground'
+                        : 'text-muted-foreground',
+                  )}
+                >
+                  {homeScore}
+                </span>
+                <span className="text-muted-foreground">-</span>
+                <span
+                  className={cn(
+                    'text-xl font-bold tabular-nums',
+                    awayWon
+                      ? 'text-primary'
+                      : isLive
+                        ? 'text-foreground'
+                        : 'text-muted-foreground',
+                  )}
+                >
+                  {awayScore}
+                </span>
+              </div>
+              {isLive && liveClockLabel && (
+                <p className="text-[11px] text-primary font-medium mt-0.5">
+                  {liveClockLabel}
+                </p>
+              )}
+              {status === 'ended' && shootoutScoreLabel && (
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  PSO {shootoutScoreLabel}
+                </p>
+              )}
             </div>
           ) : (
             <div className="px-3">
@@ -119,10 +167,13 @@ export function MatchCard({
           <div className="flex-1 min-w-0 text-right">
             <p
               className={cn(
-                "font-medium truncate",
-                isLive && homeScore !== undefined && awayScore !== undefined && awayScore > homeScore
-                  ? "text-primary"
-                  : "text-foreground"
+                'font-medium truncate',
+                isLive &&
+                  homeScore !== undefined &&
+                  awayScore !== undefined &&
+                  awayScore > homeScore
+                  ? 'text-primary'
+                  : 'text-foreground',
               )}
             >
               {awayTeam}
@@ -136,5 +187,5 @@ export function MatchCard({
         </div>
       </article>
     </Link>
-  )
+  );
 }

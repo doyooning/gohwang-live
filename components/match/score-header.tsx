@@ -8,7 +8,9 @@ interface ScoreHeaderProps {
   homeScore: number
   awayScore: number
   matchTime: string
-  status: "live" | "finished" | "upcoming"
+  shootoutScoreLabel?: string
+  shootoutWinnerSide?: "home" | "away" | null
+  status: "live" | "ended" | "upcoming"
   homeLogo?: string
   awayLogo?: string
 }
@@ -19,12 +21,19 @@ export function ScoreHeader({
   homeScore,
   awayScore,
   matchTime,
+  shootoutScoreLabel,
+  shootoutWinnerSide,
   status,
 }: ScoreHeaderProps) {
+  const isDrawInRegular = homeScore === awayScore
+  const homeWon =
+    homeScore > awayScore || (status === "ended" && isDrawInRegular && shootoutWinnerSide === "home")
+  const awayWon =
+    awayScore > homeScore || (status === "ended" && isDrawInRegular && shootoutWinnerSide === "away")
+
   return (
     <header className="bg-card border-b border-border lg:border-r shrink-0">
       <div className="flex items-center justify-between px-4 py-3">
-        {/* Home Team */}
         <div className="flex flex-col items-center flex-1">
           <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center mb-1">
             <span className="text-xs font-bold text-foreground">
@@ -36,14 +45,21 @@ export function ScoreHeader({
           </span>
         </div>
 
-        {/* Score & Time */}
         <div className="flex flex-col items-center px-4">
           <div className="flex items-center gap-3">
-            <span className="text-3xl font-bold text-foreground tabular-nums">
+            <span
+              className={`text-3xl font-bold tabular-nums ${
+                homeWon ? "text-primary" : "text-foreground"
+              }`}
+            >
               {homeScore}
             </span>
             <span className="text-xl text-muted-foreground">-</span>
-            <span className="text-3xl font-bold text-foreground tabular-nums">
+            <span
+              className={`text-3xl font-bold tabular-nums ${
+                awayWon ? "text-primary" : "text-foreground"
+              }`}
+            >
               {awayScore}
             </span>
           </div>
@@ -55,17 +71,19 @@ export function ScoreHeader({
               className={`text-xs font-medium ${
                 status === "live"
                   ? "text-primary"
-                  : status === "finished"
-                  ? "text-muted-foreground"
-                  : "text-accent"
+                  : status === "ended"
+                    ? "text-muted-foreground"
+                    : "text-accent"
               }`}
             >
-              {status === "live" ? matchTime : status === "finished" ? "종료" : matchTime}
+              {status === "live" ? matchTime : status === "ended" ? "종료" : matchTime}
             </span>
           </div>
+          {status === "ended" && shootoutScoreLabel && (
+            <p className="text-[11px] text-muted-foreground mt-0.5">PSO {shootoutScoreLabel}</p>
+          )}
         </div>
 
-        {/* Away Team */}
         <div className="flex flex-col items-center flex-1">
           <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center mb-1">
             <span className="text-xs font-bold text-foreground">

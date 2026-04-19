@@ -10,7 +10,7 @@ export interface Match {
   location: string;
   match_date: string;
   youtube_url: string | null;
-  status: 'scheduled' | 'live' | 'finished' | 'SCHEDULED' | 'LIVE' | 'FINISHED';
+  status: 'scheduled' | 'live' | 'ended' | 'SCHEDULED' | 'LIVE' | 'ENDED';
   created_at: string;
 }
 
@@ -63,8 +63,10 @@ export interface MatchEvent {
     | 'second_half_end'
     | 'extra'
     | 'extra_time_start'
-    | 'extra_time_end';
-  team_side: 'HOME' | 'AWAY';
+    | 'extra_time_end'
+    | 'shootout_goal'
+    | 'shootout_missed';
+  team_side: 'HOME' | 'AWAY' | 'NONE';
   player_id: string | null;
   minute: number;
   description: string | null;

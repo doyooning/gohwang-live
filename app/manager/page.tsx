@@ -97,6 +97,8 @@ export default function AdminPage() {
       first_half_end?: string
       second_half_start?: string
       second_half_end?: string
+      extra_start?: string
+      extra_end?: string
     }>
   >({})
   const [clockTick, setClockTick] = useState(0)
@@ -145,6 +147,8 @@ export default function AdminPage() {
               "half_end",
               "second_half_start",
               "second_half_end",
+              "extra_time_start",
+              "extra_time_end",
             ])
             .order("created_at", { ascending: true })
 
@@ -153,6 +157,8 @@ export default function AdminPage() {
             first_half_end?: string
             second_half_start?: string
             second_half_end?: string
+            extra_start?: string
+            extra_end?: string
           }> = {}
 
           ;(timeEvents || []).forEach((event: any) => {
@@ -162,6 +168,8 @@ export default function AdminPage() {
             if (event.event_type === "half_end") nextTimesById[matchId].first_half_end = event.created_at
             if (event.event_type === "second_half_start") nextTimesById[matchId].second_half_start = event.created_at
             if (event.event_type === "second_half_end") nextTimesById[matchId].second_half_end = event.created_at
+            if (event.event_type === "extra_time_start") nextTimesById[matchId].extra_start = event.created_at
+            if (event.event_type === "extra_time_end") nextTimesById[matchId].extra_end = event.created_at
           })
 
           setLiveMatchTimesById(nextTimesById)
@@ -414,6 +422,8 @@ export default function AdminPage() {
     void clockTick
     const t = liveMatchTimesById[matchId]
     if (!t) return "LIVE"
+    if (t.extra_end) return "연장 ET"
+    if (t.extra_start) return `연장 ${elapsedMinutes(t.extra_start)}'`
     if (t.second_half_end) return "후반 FT"
     if (t.second_half_start) return `후반 ${elapsedMinutes(t.second_half_start)}'`
     if (t.first_half_end) return "전반 HT"
@@ -447,7 +457,7 @@ export default function AdminPage() {
         )
       case "scheduled":
         return <Badge variant="outline">예정</Badge>
-      case "finished":
+      case "ended":
         return <Badge variant="secondary">종료</Badge>
       default:
         return null
@@ -855,7 +865,8 @@ export default function AdminPage() {
               {selectedMatch && (
                 <>
                   <span className="font-semibold text-foreground">
-                    {selectedMatch.home_team} vs {selectedMatch.away_team}
+                    {getTeamName(selectedMatch.home_team_id, selectedMatch.home_team)} vs{" "}
+                    {getTeamName(selectedMatch.away_team_id, selectedMatch.away_team)}
                   </span>
                   <br />
                   이 작업은 되돌릴 수 없습니다. 경기와 관련된 모든 기록(이벤트, 라인업)이 영구적으로 삭제됩니다.
