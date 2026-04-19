@@ -26,6 +26,13 @@ export default function LoginPage() {
             <LoginForm />
           </div>
 
+          <Link
+            href="/"
+            className="mt-3 inline-flex w-full items-center justify-center rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-secondary transition-colors"
+          >
+            메인화면으로 이동
+          </Link>
+
           {/* Role helper text */}
           <div className="mt-6">
             <div className="flex items-start gap-3 p-3 bg-secondary/50 rounded-lg">

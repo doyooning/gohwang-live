@@ -57,9 +57,15 @@ export interface MatchEvent {
     | 'yellow_card'
     | 'red_card'
     | 'substitution'
-    | 'time_record';
+    | 'half_start'
+    | 'half_end'
+    | 'second_half_start'
+    | 'second_half_end'
+    | 'extra'
+    | 'extra_time_start'
+    | 'extra_time_end';
   team_side: 'HOME' | 'AWAY';
-  scored_player_id: string | null;
+  player_id: string | null;
   minute: number;
   description: string | null;
   assist_player_id: string | null;

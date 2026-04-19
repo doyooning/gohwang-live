@@ -34,6 +34,7 @@ import {
   Users,
   Calendar,
   Radio,
+  Clock,
   Loader2,
   Plus,
   Pencil,
@@ -90,6 +91,15 @@ export default function AdminPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [matches, setMatches] = useState<Match[]>([])
+  const [liveMatchTimesById, setLiveMatchTimesById] = useState<
+    Record<string, {
+      first_half_start?: string
+      first_half_end?: string
+      second_half_start?: string
+      second_half_end?: string
+    }>
+  >({})
+  const [clockTick, setClockTick] = useState(0)
   const [teams, setTeams] = useState<Team[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -120,6 +130,44 @@ export default function AdminPage() {
         console.error("Error fetching matches:", error)
       } else {
         setMatches(data || [])
+
+        const liveMatchIds = (data || [])
+          .filter((m: Match) => m.status.toLowerCase() === "live")
+          .map((m: Match) => m.id)
+
+        if (liveMatchIds.length > 0) {
+          const { data: timeEvents } = await supabase
+            .from("match_events")
+            .select("match_id, event_type, created_at")
+            .in("match_id", liveMatchIds)
+            .in("event_type", [
+              "half_start",
+              "half_end",
+              "second_half_start",
+              "second_half_end",
+            ])
+            .order("created_at", { ascending: true })
+
+          const nextTimesById: Record<string, {
+            first_half_start?: string
+            first_half_end?: string
+            second_half_start?: string
+            second_half_end?: string
+          }> = {}
+
+          ;(timeEvents || []).forEach((event: any) => {
+            const matchId = event.match_id as string
+            if (!nextTimesById[matchId]) nextTimesById[matchId] = {}
+            if (event.event_type === "half_start") nextTimesById[matchId].first_half_start = event.created_at
+            if (event.event_type === "half_end") nextTimesById[matchId].first_half_end = event.created_at
+            if (event.event_type === "second_half_start") nextTimesById[matchId].second_half_start = event.created_at
+            if (event.event_type === "second_half_end") nextTimesById[matchId].second_half_end = event.created_at
+          })
+
+          setLiveMatchTimesById(nextTimesById)
+        } else {
+          setLiveMatchTimesById({})
+        }
       }
       setLoading(false)
     }
@@ -151,6 +199,12 @@ export default function AdminPage() {
       supabase.removeChannel(channel)
     }
   }, [isLoading, user, router, supabase])
+
+  useEffect(() => {
+    if (!matches.some((m) => m.status.toLowerCase() === "live")) return
+    const interval = setInterval(() => setClockTick((prev) => prev + 1), 1000)
+    return () => clearInterval(interval)
+  }, [matches])
 
   const handleCreateMatch = async () => {
     if (!formData.title || !formData.home_team_id || !formData.away_team_id || !formData.match_date || !formData.match_time) {
@@ -344,6 +398,29 @@ export default function AdminPage() {
     return team?.name || fallback || "미지정"
   }
 
+  const parseIso = (value?: string) => {
+    if (!value) return null
+    const date = new Date(value)
+    return Number.isNaN(date.getTime()) ? null : date
+  }
+
+  const elapsedMinutes = (start?: string, end = new Date()) => {
+    const s = parseIso(start)
+    if (!s) return 0
+    return Math.max(0, Math.floor((end.getTime() - s.getTime()) / 60000))
+  }
+
+  const getDashboardClockLabel = (matchId: string) => {
+    void clockTick
+    const t = liveMatchTimesById[matchId]
+    if (!t) return "LIVE"
+    if (t.second_half_end) return "후반 FT"
+    if (t.second_half_start) return `후반 ${elapsedMinutes(t.second_half_start)}'`
+    if (t.first_half_end) return "전반 HT"
+    if (t.first_half_start) return `전반 ${elapsedMinutes(t.first_half_start)}'`
+    return "LIVE"
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -474,9 +551,17 @@ export default function AdminPage() {
                         })}
                       </p>
                     ) : (
-                      <p className="text-lg font-bold text-foreground">
-                        {match.home_score} : {match.away_score}
-                      </p>
+                      <div className="text-center">
+                        <p className="text-lg font-bold text-foreground">
+                          {match.home_score} : {match.away_score}
+                        </p>
+                        {match.status.toLowerCase() === "live" && (
+                          <p className="text-xs text-primary font-medium mt-0.5 inline-flex items-center gap-1">
+                            <Clock className="size-3" />
+                            {getDashboardClockLabel(match.id)}
+                          </p>
+                        )}
+                      </div>
                     )}
                   </div>
                   <div className="flex-1 text-center">

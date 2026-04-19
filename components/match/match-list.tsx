@@ -8,6 +8,7 @@ import { Loader2 } from "lucide-react"
 
 export function MatchList() {
   const [matches, setMatches] = useState<Match[]>([])
+  const [teamNamesById, setTeamNamesById] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -23,6 +24,28 @@ export function MatchList() {
         console.error("Error fetching matches:", error)
       } else {
         setMatches(data || [])
+        const teamIds = Array.from(
+          new Set(
+            (data || [])
+              .flatMap((match: Match) => [match.home_team_id, match.away_team_id])
+              .filter(Boolean)
+          )
+        )
+
+        if (teamIds.length > 0) {
+          const { data: teamsData } = await supabase
+            .from("teams")
+            .select("id, name")
+            .in("id", teamIds)
+
+          const nextTeamNamesById: Record<string, string> = {}
+          ;(teamsData || []).forEach((team: any) => {
+            nextTeamNamesById[team.id] = team.name
+          })
+          setTeamNamesById(nextTeamNamesById)
+        } else {
+          setTeamNamesById({})
+        }
       }
       setLoading(false)
     }
@@ -79,8 +102,8 @@ export function MatchList() {
               <MatchCard
                 key={match.id}
                 id={match.id}
-                homeTeam={match.home_team || "홈팀"}
-                awayTeam={match.away_team || "원정팀"}
+                homeTeam={`홈팀 · ${teamNamesById[match.home_team_id] || match.home_team || "미정"}`}
+                awayTeam={`원정 · ${teamNamesById[match.away_team_id] || match.away_team || "미정"}`}
                 homeScore={match.home_score}
                 awayScore={match.away_score}
                 venue={match.location || "-"}
@@ -101,8 +124,8 @@ export function MatchList() {
               <MatchCard
                 key={match.id}
                 id={match.id}
-                homeTeam={match.home_team || "홈팀"}
-                awayTeam={match.away_team || "원정팀"}
+                homeTeam={`홈팀 · ${teamNamesById[match.home_team_id] || match.home_team || "미정"}`}
+                awayTeam={`원정 · ${teamNamesById[match.away_team_id] || match.away_team || "미정"}`}
                 scheduledTime={new Date(match.match_date).toLocaleTimeString("ko-KR", {
                   hour: "2-digit",
                   minute: "2-digit",
@@ -125,8 +148,8 @@ export function MatchList() {
               <MatchCard
                 key={match.id}
                 id={match.id}
-                homeTeam={match.home_team || "홈팀"}
-                awayTeam={match.away_team || "원정팀"}
+                homeTeam={`홈팀 · ${teamNamesById[match.home_team_id] || match.home_team || "미정"}`}
+                awayTeam={`원정 · ${teamNamesById[match.away_team_id] || match.away_team || "미정"}`}
                 homeScore={match.home_score}
                 awayScore={match.away_score}
                 venue={match.location || "-"}

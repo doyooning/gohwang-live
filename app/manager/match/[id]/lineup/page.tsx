@@ -349,6 +349,10 @@ export default function LineupManagementPage() {
     setSelectedPlayerIds([]);
   };
 
+  const handleSelectAllAvailable = () => {
+    setSelectedPlayerIds(availablePlayers.map((player) => player.id));
+  };
+
   const handleAddSelectedPlayersToLineup = async () => {
     if (selectedPlayerIds.length === 0) return;
 
@@ -780,9 +784,19 @@ export default function LineupManagementPage() {
               <p className="text-sm text-muted-foreground">
                 체크한 선수들만 라인업에 포함됩니다.
               </p>
-              <Button variant="ghost" size="sm" onClick={handleClearSelection}>
-                선택 해제
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSelectAllAvailable}
+                  disabled={availablePlayers.length === 0}
+                >
+                  전체 선택
+                </Button>
+                <Button variant="ghost" size="sm" onClick={handleClearSelection}>
+                  선택 해제
+                </Button>
+              </div>
             </div>
             {availablePlayers.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground text-sm">

@@ -8,6 +8,7 @@ import {
   RectangleHorizontal,
   ArrowLeftRight,
   Loader2,
+  Timer,
 } from 'lucide-react';
 import type { MatchEvent } from '@/lib/types';
 
@@ -29,6 +30,14 @@ function EventIcon({ type }: { type: string }) {
       );
     case 'substitution':
       return <ArrowLeftRight className="w-4 h-4 text-muted-foreground" />;
+    case 'half_start':
+    case 'half_end':
+    case 'second_half_start':
+    case 'second_half_end':
+    case 'extra':
+    case 'extra_time_start':
+    case 'extra_time_end':
+      return <Timer className="w-4 h-4 text-muted-foreground" />;
     default:
       return null;
   }
@@ -41,7 +50,7 @@ function EventDescription({
   event: MatchEvent;
   getPlayerNameById: (id: string | null | undefined, fallback?: string) => string;
 }) {
-  const scorerName = getPlayerNameById(event.scored_player_id, '');
+  const scorerName = getPlayerNameById(event.player_id, '');
   const subInName = getPlayerNameById(event.sub_in_player_id, '');
   const subOutName = getPlayerNameById(event.sub_out_player_id, event.description || '');
 
@@ -72,6 +81,18 @@ function EventDescription({
             </>
           )}
         </div>
+      );
+    case 'half_start':
+    case 'half_end':
+    case 'second_half_start':
+    case 'second_half_end':
+    case 'extra':
+    case 'extra_time_start':
+    case 'extra_time_end':
+      return (
+        <span className="font-medium text-foreground">
+          {event.description || '시간 기록'}
+        </span>
       );
     default:
       return <span className="font-medium text-foreground">{scorerName}</span>;

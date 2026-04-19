@@ -58,11 +58,28 @@ interface MatchTimes {
   extra_end: string;
 }
 
+const EMPTY_MATCH_TIMES: MatchTimes = {
+  first_half_start: '',
+  first_half_end: '',
+  second_half_start: '',
+  second_half_end: '',
+  extra_start: '',
+  extra_end: '',
+};
+
 interface PenaltyKick {
   order: number;
   team: 'first' | 'second';
   result: 'success' | 'fail' | null;
 }
+
+type TimeEventType =
+  | 'half_start'
+  | 'half_end'
+  | 'second_half_start'
+  | 'second_half_end'
+  | 'extra_time_start'
+  | 'extra_time_end';
 
 export default function MatchControlPage() {
   const { user, isLoading } = useAuth();
@@ -98,14 +115,7 @@ export default function MatchControlPage() {
 
   // Time section state
   const [showTimePanel, setShowTimePanel] = useState(false);
-  const [matchTimes, setMatchTimes] = useState<MatchTimes>({
-    first_half_start: '',
-    first_half_end: '',
-    second_half_start: '',
-    second_half_end: '',
-    extra_start: '',
-    extra_end: '',
-  });
+  const [matchTimes, setMatchTimes] = useState<MatchTimes>(EMPTY_MATCH_TIMES);
   const [lastTimeRecord, setLastTimeRecord] = useState<{
     type: TimeType;
     eventId: string;
@@ -121,6 +131,7 @@ export default function MatchControlPage() {
   const [currentPenaltyTeam, setCurrentPenaltyTeam] = useState<
     'first' | 'second'
   >('first');
+  const [clockTick, setClockTick] = useState(0);
 
   // Auth guard
   useEffect(() => {
@@ -174,6 +185,35 @@ export default function MatchControlPage() {
       }
       if (eventsResult.data) {
         setEvents(eventsResult.data);
+
+        const eventToTimeType: Partial<Record<TimeEventType, TimeType>> = {
+          half_start: 'first_half_start',
+          half_end: 'first_half_end',
+          second_half_start: 'second_half_start',
+          second_half_end: 'second_half_end',
+          extra_time_start: 'extra_start',
+          extra_time_end: 'extra_end',
+        };
+
+        const nextTimes: MatchTimes = { ...EMPTY_MATCH_TIMES };
+        let latestTimeEvent: { type: TimeType; eventId: string } | null = null;
+        const sortedEvents = [...eventsResult.data].sort(
+          (a, b) =>
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+        );
+
+        sortedEvents.forEach((event) => {
+          const mappedType = eventToTimeType[event.event_type as TimeEventType];
+          if (!mappedType) return;
+          nextTimes[mappedType] = event.created_at;
+          latestTimeEvent = { type: mappedType, eventId: event.id };
+        });
+
+        setMatchTimes(nextTimes);
+        setLastTimeRecord(latestTimeEvent);
+      } else {
+        setMatchTimes(EMPTY_MATCH_TIMES);
+        setLastTimeRecord(null);
       }
 
       const { data: lineupData } = await supabase
@@ -271,6 +311,69 @@ export default function MatchControlPage() {
     }
   }, [penaltyKicks.length]);
 
+  useEffect(() => {
+    if (match?.status?.toLowerCase() !== 'live') return;
+    const interval = setInterval(() => {
+      setClockTick((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [match?.status]);
+
+  const parseIsoTime = (value: string) => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const getElapsedMinutes = (startValue: string, endDate = new Date()) => {
+    const startDate = parseIsoTime(startValue);
+    if (!startDate) return 0;
+    return Math.max(0, Math.floor((endDate.getTime() - startDate.getTime()) / 60000));
+  };
+
+  const getFirstHalfDuration = () => {
+    if (matchTimes.first_half_end && matchTimes.first_half_start) {
+      const halfEnd = parseIsoTime(matchTimes.first_half_end);
+      if (halfEnd) return getElapsedMinutes(matchTimes.first_half_start, halfEnd);
+    }
+    if (matchTimes.first_half_start) return getElapsedMinutes(matchTimes.first_half_start);
+    return 0;
+  };
+
+  const getSecondHalfDuration = () => {
+    if (matchTimes.second_half_end && matchTimes.second_half_start) {
+      const secondEnd = parseIsoTime(matchTimes.second_half_end);
+      if (secondEnd) return getElapsedMinutes(matchTimes.second_half_start, secondEnd);
+    }
+    if (matchTimes.second_half_start)
+      return getElapsedMinutes(matchTimes.second_half_start);
+    return 0;
+  };
+
+  const getLiveClockLabel = () => {
+    void clockTick;
+    if (matchTimes.second_half_end) return '후반 FT';
+    if (matchTimes.second_half_start) {
+      return `후반 ${getElapsedMinutes(matchTimes.second_half_start)}'`;
+    }
+    if (matchTimes.first_half_end) return '전반 HT';
+    if (matchTimes.first_half_start) {
+      return `전반 ${getElapsedMinutes(matchTimes.first_half_start)}'`;
+    }
+    return 'LIVE';
+  };
+
+  const formatStoredTime = (value: string) => {
+    const parsed = parseIsoTime(value);
+    if (!parsed) return value;
+    return parsed.toLocaleTimeString('ko-KR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+  };
+
   const getPlayers = useCallback(
     (team: 'home' | 'away') => {
       return team === 'home' ? players.home : players.away;
@@ -341,7 +444,7 @@ export default function MatchControlPage() {
       match_id: matchId,
       event_type: eventType,
       team_side: selectedTeam.toUpperCase(),
-      scored_player_id: player.id,
+      player_id: player.id,
       minute,
       description,
       assist_player_id: assistPlayerId,
@@ -439,11 +542,15 @@ export default function MatchControlPage() {
       }
     }
 
-    const now = new Date().toLocaleTimeString('ko-KR', {
+    const nowDate = new Date();
+    const nowIso = nowDate.toISOString();
+    const nowDisplay = nowDate.toLocaleTimeString('ko-KR', {
       hour: '2-digit',
       minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
     });
-    setMatchTimes((prev) => ({ ...prev, [timeType]: now }));
+    setMatchTimes((prev) => ({ ...prev, [timeType]: nowIso }));
 
     // 이벤트 타임라인에 기록
     const timeLabels: Record<TimeType, string> = {
@@ -455,29 +562,70 @@ export default function MatchControlPage() {
       extra_end: '연장 종료',
     };
 
+    const firstHalfDuration = getFirstHalfDuration();
+    const secondHalfDuration = getSecondHalfDuration();
+    const regularTotal = firstHalfDuration + secondHalfDuration;
     const minuteValues: Record<TimeType, number> = {
       first_half_start: 0,
-      first_half_end: 45,
-      second_half_start: 45,
-      second_half_end: 90,
-      extra_start: 90,
-      extra_end: 120,
+      first_half_end: firstHalfDuration,
+      second_half_start: firstHalfDuration,
+      second_half_end: regularTotal,
+      extra_start: regularTotal,
+      extra_end: regularTotal + getElapsedMinutes(matchTimes.extra_start),
     };
 
-    const { data: insertedEvent } = await supabase
-      .from('match_events')
-      .insert({
-        match_id: matchId,
-        event_type: 'time_record',
-        team_side: 'HOME',
-        minute: minuteValues[timeType],
-        description: `${timeLabels[timeType]} (${now})`,
-      })
-      .select()
-      .single();
+    const timeDescription = `${timeLabels[timeType]} (${nowDisplay})`;
+    const eventTypeMap: Record<TimeType, TimeEventType> = {
+      first_half_start: 'half_start',
+      first_half_end: 'half_end',
+      second_half_start: 'second_half_start',
+      second_half_end: 'second_half_end',
+      extra_start: 'extra_time_start',
+      extra_end: 'extra_time_end',
+    };
 
-    if (insertedEvent) {
-      setLastTimeRecord({ type: timeType, eventId: insertedEvent.id });
+    const timeEventType = eventTypeMap[timeType];
+
+    const { error: insertError } = await supabase.from('match_events').insert({
+      match_id: matchId,
+      event_type: timeEventType,
+      team_side: 'HOME',
+      player_id: null,
+      minute: minuteValues[timeType],
+      description: timeDescription,
+      assist_player_id: null,
+      sub_in_player_id: null,
+      sub_out_player_id: null,
+    });
+
+    if (insertError) {
+      console.error('Error saving time record:', insertError);
+      const isMissingEnumValue =
+        insertError.code === '22P02' &&
+        insertError.message?.includes('match_event_type');
+      toast({
+        title: '시간 기록 실패',
+        description: isMissingEnumValue
+          ? 'DB enum(match_event_type) 값이 현재 코드와 다릅니다. 시간 관련 enum 값을 확인해주세요.'
+          : insertError.message,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const { data: latestTimeEvent } = await supabase
+      .from('match_events')
+      .select('id')
+      .eq('match_id', matchId)
+      .eq('event_type', timeEventType)
+      .eq('minute', minuteValues[timeType])
+      .eq('description', timeDescription)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (latestTimeEvent?.id) {
+      setLastTimeRecord({ type: timeType, eventId: latestTimeEvent.id });
     }
 
     // 이벤트 목록 새로고침
@@ -627,7 +775,13 @@ export default function MatchControlPage() {
         return <div className="size-3 rounded-sm bg-red-500" />;
       case 'substitution':
         return <RefreshCw className="size-4" />;
-      case 'time_record':
+      case 'half_start':
+      case 'half_end':
+      case 'second_half_start':
+      case 'second_half_end':
+      case 'extra':
+      case 'extra_time_start':
+      case 'extra_time_end':
         return <Timer className="size-4" />;
       default:
         return null;
@@ -636,7 +790,7 @@ export default function MatchControlPage() {
 
   const getEventLabel = (event: MatchEvent) => {
     const scorerName =
-      getPlayerNameByLineupPlayerId(event.scored_player_id) || '';
+      getPlayerNameByLineupPlayerId(event.player_id) || '';
     const subInName =
       getPlayerNameByLineupPlayerId(event.sub_in_player_id) || '';
     const subOutName =
@@ -655,7 +809,13 @@ export default function MatchControlPage() {
         return `${scorerName} 퇴장`;
       case 'substitution':
         return subOutName ? `${subOutName} OUT / ${subInName} IN` : `${subInName} IN`;
-      case 'time_record':
+      case 'half_start':
+      case 'half_end':
+      case 'second_half_start':
+      case 'second_half_end':
+      case 'extra':
+      case 'extra_time_start':
+      case 'extra_time_end':
         return event.description || '시간 기록';
       default:
         return scorerName || event.description || '이벤트';
@@ -768,7 +928,7 @@ export default function MatchControlPage() {
               {match.status.toLowerCase() === 'live' && (
                 <div className="flex items-center justify-center gap-1 text-primary text-sm font-medium mt-1">
                   <Clock className="size-3" />
-                  {(() => {
+                  {getLiveClockLabel() /* 
                     // 경기 진행 시간 계산
                     const now = new Date();
                     if (
@@ -805,7 +965,7 @@ export default function MatchControlPage() {
                       return `${minutes}'`;
                     }
                     return 'LIVE';
-                  })()}
+                  */}
                 </div>
               )}
             </div>
@@ -941,7 +1101,7 @@ export default function MatchControlPage() {
                 onClick={() => handleSetTime('first_half_start')}
               >
                 {matchTimes.first_half_start
-                  ? `시작 : ${matchTimes.first_half_start}`
+                  ? `시작 : ${formatStoredTime(matchTimes.first_half_start)}`
                   : '시작'}
               </Button>
               <Button
@@ -950,7 +1110,7 @@ export default function MatchControlPage() {
                 onClick={() => handleSetTime('first_half_end')}
               >
                 {matchTimes.first_half_end
-                  ? `종료 : ${matchTimes.first_half_end}`
+                  ? `종료 : ${formatStoredTime(matchTimes.first_half_end)}`
                   : '종료'}
               </Button>
             </div>
@@ -965,7 +1125,7 @@ export default function MatchControlPage() {
                 onClick={() => handleSetTime('second_half_start')}
               >
                 {matchTimes.second_half_start
-                  ? `시작 : ${matchTimes.second_half_start}`
+                  ? `시작 : ${formatStoredTime(matchTimes.second_half_start)}`
                   : '시작'}
               </Button>
               <Button
@@ -974,7 +1134,7 @@ export default function MatchControlPage() {
                 onClick={() => handleSetTime('second_half_end')}
               >
                 {matchTimes.second_half_end
-                  ? `종료 : ${matchTimes.second_half_end}`
+                  ? `종료 : ${formatStoredTime(matchTimes.second_half_end)}`
                   : '종료'}
               </Button>
             </div>
@@ -989,7 +1149,7 @@ export default function MatchControlPage() {
                 onClick={() => handleSetTime('extra_start')}
               >
                 {matchTimes.extra_start
-                  ? `시작 : ${matchTimes.extra_start}`
+                  ? `시작 : ${formatStoredTime(matchTimes.extra_start)}`
                   : '시작'}
               </Button>
               <Button
@@ -998,7 +1158,7 @@ export default function MatchControlPage() {
                 onClick={() => handleSetTime('extra_end')}
               >
                 {matchTimes.extra_end
-                  ? `종료 : ${matchTimes.extra_end}`
+                  ? `종료 : ${formatStoredTime(matchTimes.extra_end)}`
                   : '종료'}
               </Button>
             </div>
