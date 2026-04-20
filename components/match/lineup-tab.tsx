@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Loader2, RectangleHorizontal } from 'lucide-react';
 import type { Lineup, Match } from '@/lib/types';
 
 interface LineupTabProps {
@@ -14,6 +14,7 @@ interface Player {
   number: number;
   name: string;
   isCaptain?: boolean;
+  status?: 'available' | 'sub_in' | 'sub_out' | 'sent_off';
 }
 
 interface TeamLineup {
@@ -22,22 +23,37 @@ interface TeamLineup {
   substitutes: Player[];
 }
 
+interface LineupRow extends Lineup {
+  player_status?: 'available' | 'sub_in' | 'sub_out' | 'sent_off';
+}
+
 const sortByNumberAsc = (players: Player[]) =>
   [...players].sort((a, b) => a.number - b.number);
 
 function PlayerRow({ player }: { player: Player }) {
+  const isOut = player.status === 'sub_out';
+  const isSentOff = player.status === 'sent_off';
+  const showMuted = isOut || isSentOff;
+
   return (
     <div className="flex items-center justify-between py-2 px-3">
       <div className="flex items-center gap-3">
         <span className="w-6 text-center text-sm font-bold text-primary tabular-nums">
           {player.number}
         </span>
-        <span className="text-sm text-foreground">
+        <span className={`text-sm ${showMuted ? 'text-muted-foreground' : 'text-foreground'}`}>
           {player.name}
           {player.isCaptain && (
             <span className="ml-1.5 text-[10px] text-accent font-bold">(C)</span>
           )}
         </span>
+      </div>
+      <div className="flex items-center gap-1">
+        {player.status === 'sub_in' && <ArrowUp className="size-4 text-green-500" />}
+        {player.status === 'sub_out' && <ArrowDown className="size-4 text-red-500" />}
+        {player.status === 'sent_off' && (
+          <RectangleHorizontal className="size-4 fill-red-500 text-red-500 rotate-90" />
+        )}
       </div>
     </div>
   );
@@ -81,7 +97,7 @@ function TeamSection({
 
 export function LineupTab({ matchId }: LineupTabProps) {
   const [match, setMatch] = useState<Match | null>(null);
-  const [lineups, setLineups] = useState<Lineup[]>([]);
+  const [lineups, setLineups] = useState<LineupRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -99,13 +115,13 @@ export function LineupTab({ matchId }: LineupTabProps) {
         .select('id, team_side')
         .eq('match_id', matchId);
 
-      let fetchedLineups: Lineup[] = [];
+      let fetchedLineups: LineupRow[] = [];
 
       if (matchLineups?.length) {
         const lineupIds = matchLineups.map((lineup: any) => lineup.id);
         const { data: lineupPlayersData } = await supabase
           .from('match_lineup_players')
-          .select('id, match_lineup_id, lineup_role, team_player:team_players!inner(name, jersey_number)')
+          .select('id, match_lineup_id, lineup_role, player_status, team_player:team_players!inner(name, jersey_number)')
           .in('match_lineup_id', lineupIds);
 
         fetchedLineups =
@@ -118,6 +134,7 @@ export function LineupTab({ matchId }: LineupTabProps) {
               player_name: lp.team_player?.name || '',
               jersey_number: lp.team_player?.jersey_number || 0,
               is_starter: lp.lineup_role === 'STARTER',
+              player_status: lp.player_status || 'available',
               created_at: '',
             };
           }) || [];
@@ -195,12 +212,20 @@ export function LineupTab({ matchId }: LineupTabProps) {
     starters: sortByNumberAsc(
       lineups
         .filter((l) => l.team_side === 'HOME' && l.is_starter)
-        .map((l) => ({ number: l.jersey_number, name: l.player_name })),
+        .map((l: any) => ({
+          number: l.jersey_number,
+          name: l.player_name,
+          status: l.player_status || 'available',
+        })),
     ),
     substitutes: sortByNumberAsc(
       lineups
         .filter((l) => l.team_side === 'HOME' && !l.is_starter)
-        .map((l) => ({ number: l.jersey_number, name: l.player_name })),
+        .map((l: any) => ({
+          number: l.jersey_number,
+          name: l.player_name,
+          status: l.player_status || 'available',
+        })),
     ),
   };
 
@@ -209,12 +234,20 @@ export function LineupTab({ matchId }: LineupTabProps) {
     starters: sortByNumberAsc(
       lineups
         .filter((l) => l.team_side === 'AWAY' && l.is_starter)
-        .map((l) => ({ number: l.jersey_number, name: l.player_name })),
+        .map((l: any) => ({
+          number: l.jersey_number,
+          name: l.player_name,
+          status: l.player_status || 'available',
+        })),
     ),
     substitutes: sortByNumberAsc(
       lineups
         .filter((l) => l.team_side === 'AWAY' && !l.is_starter)
-        .map((l) => ({ number: l.jersey_number, name: l.player_name })),
+        .map((l: any) => ({
+          number: l.jersey_number,
+          name: l.player_name,
+          status: l.player_status || 'available',
+        })),
     ),
   };
 

@@ -10,6 +10,7 @@ export interface Match {
   location: string;
   match_date: string;
   youtube_url: string | null;
+  display_status?: boolean;
   status: 'scheduled' | 'live' | 'ended' | 'SCHEDULED' | 'LIVE' | 'ENDED';
   created_at: string;
 }
@@ -44,6 +45,7 @@ export interface MatchLineupPlayer {
   match_lineup_id: string;
   team_player_id: string;
   lineup_role: 'STARTER' | 'SUBSTITUTE';
+  player_status?: 'available' | 'sub_in' | 'sub_out' | 'sent_off';
   created_at: string;
   // Joined data
   team_player?: TeamPlayer;
@@ -68,7 +70,9 @@ export interface MatchEvent {
     | 'shootout_missed';
   team_side: 'HOME' | 'AWAY' | 'NONE';
   player_id: string | null;
-  minute: number;
+  sort_minute: number;
+  display_minute: number;
+  period: '전반' | '후반' | '연장' | null;
   description: string | null;
   assist_player_id: string | null;
   sub_in_player_id: string | null;

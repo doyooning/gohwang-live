@@ -33,7 +33,10 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import {
   ArrowLeft,
+  ArrowDown,
+  ArrowUp,
   Plus,
+  RectangleHorizontal,
   Trash2,
   Save,
   Users,
@@ -57,6 +60,7 @@ interface LineupPlayer {
   number: number;
   position: string | null;
   role: 'STARTER' | 'SUBSTITUTE';
+  status: 'available' | 'sub_in' | 'sub_out' | 'sent_off';
 }
 
 const sortLineupPlayersByNumber = (players: LineupPlayer[]) =>
@@ -242,6 +246,7 @@ export default function LineupManagementPage() {
               number: lp.team_player?.jersey_number || 0,
               position: lp.team_player?.position || null,
               role: lp.lineup_role,
+              status: lp.player_status || 'available',
             };
             if (lp.match_lineup_id === homeLineup?.id) {
               homePlayers.push(player);
@@ -292,7 +297,7 @@ export default function LineupManagementPage() {
     }
   };
 
-  const validateLineup = (
+  const validateLineupBeforeKickoff = (
     players: LineupPlayer[],
   ): { valid: boolean; message: string } => {
     const starterPlayers = players.filter((p) => p.role === 'STARTER');
@@ -309,13 +314,6 @@ export default function LineupManagementPage() {
       return {
         valid: false,
         message: '선발 명단에 골키퍼가 반드시 1명 포함되어야 합니다.',
-      };
-    }
-
-    if (gkCount > 1) {
-      return {
-        valid: false,
-        message: `선발 명단에 골키퍼는 1명만 포함될 수 있습니다. (현재: ${gkCount}명)`,
       };
     }
 
@@ -411,7 +409,8 @@ export default function LineupManagementPage() {
     const rows = selectedPlayers.map((player) => ({
       match_lineup_id: lineupId,
       team_player_id: player.id,
-      lineup_role: 'SUBSTITUTE',
+      lineup_role: 'STARTER',
+      player_status: 'available',
     }));
 
     console.log('[Insert match_lineup_players payload]', rows);
@@ -442,7 +441,8 @@ export default function LineupManagementPage() {
           name: player.name,
           number: player.jersey_number,
           position: player.position,
-          role: 'SUBSTITUTE' as const,
+          role: 'STARTER' as const,
+          status: 'available' as const,
         };
       });
 
@@ -495,6 +495,7 @@ export default function LineupManagementPage() {
         match_lineup_id: lineupId,
         team_player_id: teamPlayer.id,
         lineup_role: role,
+        player_status: 'available',
       })
       .select()
       .single();
@@ -507,6 +508,7 @@ export default function LineupManagementPage() {
         number: teamPlayer.jersey_number,
         position: teamPlayer.position,
         role: role,
+        status: 'available',
       };
 
       setLineupPlayers((prev) => ({
@@ -521,22 +523,26 @@ export default function LineupManagementPage() {
   };
 
   const handleSaveLineup = async () => {
-    // Validate both teams
-    const homeValidation = validateLineup(lineupPlayers.home);
-    const awayValidation = validateLineup(lineupPlayers.away);
+    const shouldValidateBeforeKickoff =
+      String(match?.status || '').toLowerCase() === 'scheduled';
 
-    if (!homeValidation.valid) {
-      setAlertTitle('라인업 오류');
-      setAlertMessage(`[홈팀] ${homeValidation.message}`);
-      setAlertOpen(true);
-      return;
-    }
+    if (shouldValidateBeforeKickoff) {
+      const homeValidation = validateLineupBeforeKickoff(lineupPlayers.home);
+      const awayValidation = validateLineupBeforeKickoff(lineupPlayers.away);
 
-    if (!awayValidation.valid) {
-      setAlertTitle('라인업 오류');
-      setAlertMessage(`[원정팀] ${awayValidation.message}`);
-      setAlertOpen(true);
-      return;
+      if (!homeValidation.valid) {
+        setAlertTitle('라인업 오류');
+        setAlertMessage(`[홈팀] ${homeValidation.message}`);
+        setAlertOpen(true);
+        return;
+      }
+
+      if (!awayValidation.valid) {
+        setAlertTitle('라인업 오류');
+        setAlertMessage(`[원정팀] ${awayValidation.message}`);
+        setAlertOpen(true);
+        return;
+      }
     }
 
     setIsSaving(true);
@@ -674,7 +680,7 @@ export default function LineupManagementPage() {
               </span>
             </Button>
             <span className="text-sm text-muted-foreground">
-              ({starters.length}/11명)
+              ({starters.length}명)
             </span>
           </div>
         </div>
@@ -688,11 +694,6 @@ export default function LineupManagementPage() {
             <h2 className="text-sm font-semibold text-foreground">
               선발 명단 ({starters.length}명)
             </h2>
-            {starters.length !== 11 && (
-              <span className="text-xs text-destructive font-medium">
-                11명이어야 합니다
-              </span>
-            )}
           </div>
           <div className="space-y-2">
             {starters.length === 0 ? (
@@ -891,13 +892,21 @@ function PlayerCard({
   onToggleRole: () => void;
   onRemove: () => void;
 }) {
+  const isOut = player.status === 'sub_out';
+  const isSentOff = player.status === 'sent_off';
+  const showMuted = isOut || isSentOff;
+
   return (
     <div className="flex items-center gap-3 bg-card border border-border rounded-lg p-3">
       <div className="flex items-center justify-center size-10 rounded-lg bg-secondary text-foreground font-bold text-sm">
         {player.number}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-foreground truncate">
+        <p
+          className={`text-sm font-medium truncate ${
+            showMuted ? 'text-muted-foreground' : 'text-foreground'
+          }`}
+        >
           {player.name}
         </p>
         {player.position && (
@@ -907,6 +916,13 @@ function PlayerCard({
             {player.position}
           </span>
         )}
+        <div className="flex items-center gap-1 mt-1">
+          {player.status === 'sub_in' && <ArrowUp className="size-4 text-green-500" />}
+          {player.status === 'sub_out' && <ArrowDown className="size-4 text-red-500" />}
+          {player.status === 'sent_off' && (
+            <RectangleHorizontal className="size-4 fill-red-500 text-red-500 rotate-90" />
+          )}
+        </div>
       </div>
       <div className="flex items-center gap-2">
         <div className="flex items-center gap-2">

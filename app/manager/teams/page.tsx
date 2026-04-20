@@ -217,7 +217,14 @@ export default function TeamsPage() {
   }
 
   const handleUpdatePlayer = async () => {
-    if (!editingPlayer || !playerName.trim() || !playerNumber) return
+    if (!editingPlayer || !playerName.trim() || !playerNumber) {
+      toast({
+        title: "필수 항목을 입력해주세요",
+        description: "선수명과 등번호는 필수입니다.",
+        variant: "destructive",
+      })
+      return
+    }
 
     setIsSaving(true)
     const { error } = await supabase

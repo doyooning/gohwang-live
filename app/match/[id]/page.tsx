@@ -151,7 +151,10 @@ export default async function MatchPage({
 
         <div className="lg:flex-1 lg:flex lg:items-center lg:bg-black">
           <div className="w-full lg:max-h-full">
-            <VideoPlayer videoId={videoId} />
+            <VideoPlayer
+              videoId={videoId}
+              showThumbnail={Boolean(match.display_status)}
+            />
           </div>
         </div>
       </div>

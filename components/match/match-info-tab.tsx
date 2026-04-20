@@ -37,6 +37,8 @@ function EventIcon({ type }: { type: string }) {
     case 'extra':
     case 'extra_time_start':
     case 'extra_time_end':
+    case 'shootout_goal':
+    case 'shootout_missed':
       return <Timer className="w-4 h-4 text-muted-foreground" />;
     default:
       return null;
@@ -60,9 +62,7 @@ function EventDescription({
         <div>
           <span className="font-medium text-foreground">{scorerName}</span>
           {event.description && (
-            <span className="text-muted-foreground text-xs ml-1">
-              ({event.description})
-            </span>
+            <span className="text-muted-foreground text-xs ml-1">({event.description})</span>
           )}
         </div>
       );
@@ -89,21 +89,25 @@ function EventDescription({
     case 'extra':
     case 'extra_time_start':
     case 'extra_time_end':
+    case 'shootout_goal':
+    case 'shootout_missed':
       return (
         <span className="font-medium text-foreground">
           {event.description || '시간 기록'}
         </span>
       );
     default:
-      return <span className="font-medium text-foreground">{scorerName}</span>;
+      return (
+        <span className="font-medium text-foreground">
+          {scorerName || event.description || '이벤트'}
+        </span>
+      );
   }
 }
 
 export function MatchInfoTab({ matchId }: MatchInfoTabProps) {
   const [events, setEvents] = useState<MatchEvent[]>([]);
-  const [playerNameById, setPlayerNameById] = useState<Record<string, string>>(
-    {},
-  );
+  const [playerNameById, setPlayerNameById] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -119,7 +123,8 @@ export function MatchInfoTab({ matchId }: MatchInfoTabProps) {
         .from('match_events')
         .select('*')
         .eq('match_id', matchId)
-        .order('minute', { ascending: true });
+        .order('sort_minute', { ascending: true })
+        .order('created_at', { ascending: true });
 
       if (error) {
         console.error('Error fetching events:', error);
@@ -136,13 +141,15 @@ export function MatchInfoTab({ matchId }: MatchInfoTabProps) {
       if (lineupIds.length > 0) {
         const { data: lineupPlayers } = await supabase
           .from('match_lineup_players')
-          .select('id, team_player:team_players(name)')
+          .select('id, team_player:team_players(name, jersey_number)')
           .in('match_lineup_id', lineupIds);
 
         const nextNameById: Record<string, string> = {};
         (lineupPlayers || []).forEach((player: any) => {
           if (player?.id) {
-            nextNameById[player.id] = player.team_player?.name || '';
+            const number = player.team_player?.jersey_number;
+            const name = player.team_player?.name || '';
+            nextNameById[player.id] = number ? `#${number} ${name}` : name;
           }
         });
         setPlayerNameById(nextNameById);
@@ -154,7 +161,6 @@ export function MatchInfoTab({ matchId }: MatchInfoTabProps) {
 
     fetchEvents();
 
-    // Subscribe to realtime updates
     const channel = supabase
       .channel(`match-events-${matchId}`)
       .on(
@@ -210,9 +216,10 @@ export function MatchInfoTab({ matchId }: MatchInfoTabProps) {
               event.team_side === 'AWAY' ? 'flex-row-reverse' : ''
             }`}
           >
-            <div className="flex items-center gap-2 min-w-[60px]">
+            <div className="flex items-center gap-2 min-w-[92px]">
               <span className="text-sm font-bold text-primary tabular-nums">
-                {event.minute}&apos;
+                {event.period ? `${event.period} ` : ''}
+                {event.display_minute ?? event.sort_minute ?? 0}&apos;
               </span>
               <EventIcon type={event.event_type} />
             </div>
