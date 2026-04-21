@@ -248,19 +248,23 @@ export default function AdminPage() {
     const awayTeam = teams.find((t) => t.id === formData.away_team_id)
 
     try {
-      const { error } = await withTimeout(
+      const { data: createdMatch, error } = await withTimeout(
         Promise.resolve(
-          supabase.from("matches").insert({
-            title: formData.title,
-            home_team_id: formData.home_team_id,
-            away_team_id: formData.away_team_id,
-            match_date: matchDateTime.toISOString(),
-            location: formData.location || null,
-            youtube_url: formData.youtube_url || null,
-            status: "SCHEDULED",
-            home_score: 0,
-            away_score: 0,
-          })
+          supabase
+            .from("matches")
+            .insert({
+              title: formData.title,
+              home_team_id: formData.home_team_id,
+              away_team_id: formData.away_team_id,
+              match_date: matchDateTime.toISOString(),
+              location: formData.location || null,
+              youtube_url: formData.youtube_url || null,
+              status: "SCHEDULED",
+              home_score: 0,
+              away_score: 0,
+            })
+            .select("*")
+            .single()
         ),
         15000,
         "create match"
@@ -273,6 +277,13 @@ export default function AdminPage() {
           variant: "destructive",
         })
       } else {
+        if (createdMatch) {
+          setMatches((prev) =>
+            [createdMatch, ...prev].sort(
+              (a, b) => new Date(b.match_date).getTime() - new Date(a.match_date).getTime()
+            )
+          )
+        }
         toast({
           title: "경기가 생성되었습니다",
           description: `${homeTeam?.name || "홈팀"} vs ${awayTeam?.name || "원정팀"}`,
