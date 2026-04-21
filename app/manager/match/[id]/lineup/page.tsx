@@ -786,11 +786,11 @@ export default function LineupManagementPage() {
         open={isSelectPlayerDialogOpen}
         onOpenChange={setIsSelectPlayerDialogOpen}
       >
-        <DialogContent className="sm:max-w-md max-h-[80vh] flex flex-col">
+        <DialogContent className="sm:max-w-md w-[calc(100vw-2rem)] max-w-[28rem] h-[70vh] max-h-[80vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>선수 선택</DialogTitle>
           </DialogHeader>
-          <div className="flex flex-col flex-1 overflow-y-auto py-4 space-y-3">
+          <div className="flex flex-col flex-1 min-h-0 py-4">
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm text-muted-foreground">
                 체크한 선수들만 라인업에 포함됩니다.
@@ -809,44 +809,48 @@ export default function LineupManagementPage() {
                 </Button>
               </div>
             </div>
-            {availablePlayers.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground text-sm">
-                추가할 수 있는 선수가 없습니다
-              </div>
-            ) : (
-              availablePlayers.map((player) => (
-                <div
-                  key={player.id}
-                  className="flex items-center gap-3 p-3 border border-border rounded-lg"
-                >
-                  <Checkbox
-                    checked={selectedPlayerIds.includes(player.id)}
-                    onCheckedChange={() =>
-                      handleTogglePlayerSelection(player.id)
-                    }
-                  />
-                  <div className="flex items-center justify-center size-10 rounded-lg bg-secondary text-foreground font-bold text-sm">
-                    {player.jersey_number}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">
-                      {player.name}
-                    </p>
-                    {player.position && (
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getPositionColor(
-                          player.position,
-                        )}`}
-                      >
-                        {player.position}
-                      </span>
-                    )}
-                  </div>
+            <div className="mt-3 flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1">
+              {availablePlayers.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-center text-muted-foreground text-sm">
+                  추가할 수 있는 선수가 없습니다
                 </div>
-              ))
-            )}
+              ) : (
+                <div className="space-y-3">
+                  {availablePlayers.map((player) => (
+                    <div
+                      key={player.id}
+                      className="w-full min-w-0 flex items-center gap-3 p-3 border border-border rounded-lg"
+                    >
+                      <Checkbox
+                        checked={selectedPlayerIds.includes(player.id)}
+                        onCheckedChange={() =>
+                          handleTogglePlayerSelection(player.id)
+                        }
+                      />
+                      <div className="flex items-center justify-center size-10 rounded-lg bg-secondary text-foreground font-bold text-sm shrink-0">
+                        {player.jersey_number}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">
+                          {player.name}
+                        </p>
+                        {player.position && (
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getPositionColor(
+                              player.position,
+                            )}`}
+                          >
+                            {player.position}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-          <DialogFooter className="flex flex-col gap-2">
+          <DialogFooter className="w-full flex flex-col gap-2 sm:flex-col sm:space-x-0">
             <Button
               onClick={handleAddSelectedPlayersToLineup}
               disabled={selectedPlayerIds.length === 0}
@@ -857,6 +861,7 @@ export default function LineupManagementPage() {
             <Button
               variant="outline"
               onClick={() => setIsSelectPlayerDialogOpen(false)}
+              className="w-full"
             >
               닫기
             </Button>
