@@ -225,6 +225,47 @@ export default function MatchControlPage() {
     );
   }, [matchId, supabase]);
 
+  const refreshPlayersFromLineups = useCallback(async () => {
+    const { data: lineupData } = await supabase
+      .from('match_lineups')
+      .select('id, team_side')
+      .eq('match_id', matchId);
+
+    const homePlayers: Player[] = [];
+    const awayPlayers: Player[] = [];
+
+    if (lineupData?.length) {
+      const lineupIds = lineupData.map((lineup: any) => lineup.id);
+      const { data: lineupPlayersData } = await supabase
+        .from('match_lineup_players')
+        .select(
+          'id, match_lineup_id, lineup_role, player_status, team_player:team_players!inner(name, jersey_number)',
+        )
+        .in('match_lineup_id', lineupIds);
+
+      lineupPlayersData?.forEach((lp: any) => {
+        const lineup = lineupData.find((l: any) => l.id === lp.match_lineup_id);
+        if (!lineup) return;
+
+        const player = {
+          id: lp.id,
+          name: lp.team_player?.name || '',
+          number: lp.team_player?.jersey_number || 0,
+          role: lp.lineup_role,
+          status: lp.player_status || 'available',
+        } as Player;
+
+        if (lineup.team_side === 'HOME') {
+          homePlayers.push(player);
+        } else {
+          awayPlayers.push(player);
+        }
+      });
+    }
+
+    setPlayers({ home: homePlayers, away: awayPlayers });
+  }, [matchId, supabase]);
+
   const syncLineupPlayerStatusesFromEvents = useCallback(async () => {
     const { data: lineups } = await supabase
       .from('match_lineups')
@@ -235,7 +276,7 @@ export default function MatchControlPage() {
 
     const { data: lineupPlayers, error: lineupPlayersError } = await supabase
       .from('match_lineup_players')
-      .select('id, player_status')
+      .select('id, lineup_role, player_status')
       .in('match_lineup_id', lineupIds);
     if (lineupPlayersError) return { error: lineupPlayersError };
 
@@ -243,8 +284,12 @@ export default function MatchControlPage() {
       string,
       'available' | 'sub_in' | 'sub_out' | 'sent_off'
     > = {};
+    const roleByPlayerId: Record<string, 'STARTER' | 'SUBSTITUTE'> = {};
     (lineupPlayers || []).forEach((player: any) => {
       statusByPlayerId[player.id] = 'available';
+      roleByPlayerId[player.id] = (player.lineup_role || 'SUBSTITUTE') as
+        | 'STARTER'
+        | 'SUBSTITUTE';
     });
 
     const { data: allEvents, error: eventsError } = await supabase
@@ -266,6 +311,7 @@ export default function MatchControlPage() {
           statusByPlayerId[event.sub_in_player_id] !== 'sent_off'
         ) {
           statusByPlayerId[event.sub_in_player_id] = 'sub_in';
+          roleByPlayerId[event.sub_in_player_id] = 'STARTER';
         }
         if (
           event.sub_out_player_id &&
@@ -273,16 +319,23 @@ export default function MatchControlPage() {
           statusByPlayerId[event.sub_out_player_id] !== 'sent_off'
         ) {
           statusByPlayerId[event.sub_out_player_id] = 'sub_out';
+          roleByPlayerId[event.sub_out_player_id] = 'SUBSTITUTE';
         }
       }
     });
 
     for (const player of lineupPlayers || []) {
       const nextStatus = statusByPlayerId[player.id] || 'available';
-      if ((player.player_status || 'available') === nextStatus) continue;
+      const nextRole = roleByPlayerId[player.id] || 'SUBSTITUTE';
+      if (
+        (player.player_status || 'available') === nextStatus &&
+        (player.lineup_role || 'SUBSTITUTE') === nextRole
+      ) {
+        continue;
+      }
       const { error } = await supabase
         .from('match_lineup_players')
-        .update({ player_status: nextStatus })
+        .update({ player_status: nextStatus, lineup_role: nextRole })
         .eq('id', player.id);
       if (error) return { error };
     }
@@ -378,47 +431,8 @@ export default function MatchControlPage() {
         setLastTimeRecord(null);
       }
 
-      const { data: lineupData } = await supabase
-        .from('match_lineups')
-        .select('id, team_side')
-        .eq('match_id', matchId);
-
-      const homePlayers: Player[] = [];
-      const awayPlayers: Player[] = [];
-
-      if (lineupData?.length) {
-        const lineupIds = lineupData.map((lineup: any) => lineup.id);
-        const { data: lineupPlayersData } = await supabase
-          .from('match_lineup_players')
-          .select(
-            'id, match_lineup_id, lineup_role, player_status, team_player:team_players!inner(name, jersey_number)',
-          )
-          .in('match_lineup_id', lineupIds);
-
-        lineupPlayersData?.forEach((lp: any) => {
-          const lineup = lineupData.find(
-            (l: any) => l.id === lp.match_lineup_id,
-          );
-          if (!lineup) return;
-
-          const player = {
-            id: lp.id,
-            name: lp.team_player?.name || '',
-            number: lp.team_player?.jersey_number || 0,
-            role: lp.lineup_role,
-            status: lp.player_status || 'available',
-          };
-
-          if (lineup.team_side === 'HOME') {
-            homePlayers.push(player);
-          } else {
-            awayPlayers.push(player);
-          }
-        });
-      }
-
-      setPlayers({ home: homePlayers, away: awayPlayers });
       await syncLineupPlayerStatusesFromEvents();
+      await refreshPlayersFromLineups();
       setLoading(false);
     }
 
@@ -431,7 +445,14 @@ export default function MatchControlPage() {
     return () => {
       clearInterval(pollingId);
     };
-  }, [isLoading, user, matchId, supabase, syncLineupPlayerStatusesFromEvents]);
+  }, [
+    isLoading,
+    user,
+    matchId,
+    supabase,
+    syncLineupPlayerStatusesFromEvents,
+    refreshPlayersFromLineups,
+  ]);
 
   // Initialize penalty kicks
   useEffect(() => {
@@ -601,7 +622,7 @@ export default function MatchControlPage() {
     (team: 'home' | 'away') =>
       getPlayers(team).filter(
         (player) =>
-          player.status !== 'sub_out' && player.status !== 'sent_off',
+          player.role === 'SUBSTITUTE' && player.status === 'available',
       ),
     [getPlayers],
   );
@@ -609,10 +630,10 @@ export default function MatchControlPage() {
   const getSubstitutionOutCandidates = useCallback(
     (team: 'home' | 'away') =>
       getPlayers(team).filter((player) => {
-        const canBeOutByRole = player.role === 'STARTER';
-        const canBeOutByStatus = player.status === 'sub_in';
-        const blocked = player.status === 'sub_out' || player.status === 'sent_off';
-        return (canBeOutByRole || canBeOutByStatus) && !blocked;
+        return (
+          player.role === 'STARTER' &&
+          (player.status === 'available' || player.status === 'sub_in')
+        );
       }),
     [getPlayers],
   );
@@ -766,6 +787,7 @@ export default function MatchControlPage() {
       });
       return;
     }
+    await refreshPlayersFromLineups();
 
     await refreshEvents();
     await syncMatchScoreFromEvents();
@@ -974,6 +996,7 @@ export default function MatchControlPage() {
 
     // 이벤트 목록 새로고침
     await refreshEvents();
+    await refreshPlayersFromLineups();
     await syncMatchScoreFromEvents();
   };
 

@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
-  Circle,
   RectangleHorizontal,
   ArrowLeftRight,
   Loader2,
@@ -19,7 +18,11 @@ interface MatchInfoTabProps {
 function EventIcon({ type }: { type: string }) {
   switch (type) {
     case 'goal':
-      return <Circle className="w-4 h-4 fill-primary text-primary" />;
+      return (
+        <span className="inline-flex items-center justify-center w-4 h-4 text-[14px] leading-none">
+          ⚽
+        </span>
+      );
     case 'yellow_card':
       return (
         <RectangleHorizontal className="w-4 h-4 fill-accent text-accent rotate-90" />
@@ -47,14 +50,26 @@ function EventIcon({ type }: { type: string }) {
 
 function EventDescription({
   event,
-  getPlayerNameById,
+  getPlayerDisplayById,
 }: {
   event: MatchEvent;
-  getPlayerNameById: (id: string | null | undefined, fallback?: string) => string;
+  getPlayerDisplayById: (
+    teamSide: MatchEvent['team_side'],
+    id: string | null | undefined,
+    fallback?: string,
+  ) => string;
 }) {
-  const scorerName = getPlayerNameById(event.player_id, '');
-  const subInName = getPlayerNameById(event.sub_in_player_id, '');
-  const subOutName = getPlayerNameById(event.sub_out_player_id, event.description || '');
+  const scorerName = getPlayerDisplayById(event.team_side, event.player_id, '');
+  const subInName = getPlayerDisplayById(
+    event.team_side,
+    event.sub_in_player_id,
+    '',
+  );
+  const subOutName = getPlayerDisplayById(
+    event.team_side,
+    event.sub_out_player_id,
+    event.description || '',
+  );
 
   switch (event.event_type) {
     case 'goal':
@@ -107,7 +122,16 @@ function EventDescription({
 
 export function MatchInfoTab({ matchId }: MatchInfoTabProps) {
   const [events, setEvents] = useState<MatchEvent[]>([]);
-  const [playerNameById, setPlayerNameById] = useState<Record<string, string>>({});
+  const [playerById, setPlayerById] = useState<
+    Record<string, { name: string; number: number | null }>
+  >({});
+  const [teamNamesBySide, setTeamNamesBySide] = useState<{
+    HOME: string;
+    AWAY: string;
+  }>({
+    HOME: '홈팀',
+    AWAY: '원정팀',
+  });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -123,8 +147,8 @@ export function MatchInfoTab({ matchId }: MatchInfoTabProps) {
         .from('match_events')
         .select('*')
         .eq('match_id', matchId)
-        .order('sort_minute', { ascending: true })
-        .order('created_at', { ascending: true });
+        .order('sort_minute', { ascending: false })
+        .order('created_at', { ascending: false });
 
       if (error) {
         console.error('Error fetching events:', error);
@@ -132,10 +156,38 @@ export function MatchInfoTab({ matchId }: MatchInfoTabProps) {
         setEvents(data || []);
       }
 
-      const { data: matchLineups } = await supabase
-        .from('match_lineups')
-        .select('id')
-        .eq('match_id', matchId);
+      const [{ data: matchRow }, { data: matchLineups }] = await Promise.all([
+        supabase
+          .from('matches')
+          .select('home_team_id, away_team_id, home_team, away_team')
+          .eq('id', matchId)
+          .single(),
+        supabase.from('match_lineups').select('id').eq('match_id', matchId),
+      ]);
+
+      if (matchRow) {
+        const [homeTeamResult, awayTeamResult] = await Promise.all([
+          matchRow.home_team_id
+            ? supabase
+                .from('teams')
+                .select('name')
+                .eq('id', matchRow.home_team_id)
+                .single()
+            : Promise.resolve({ data: null }),
+          matchRow.away_team_id
+            ? supabase
+                .from('teams')
+                .select('name')
+                .eq('id', matchRow.away_team_id)
+                .single()
+            : Promise.resolve({ data: null }),
+        ]);
+
+        setTeamNamesBySide({
+          HOME: homeTeamResult.data?.name || matchRow.home_team || '홈팀',
+          AWAY: awayTeamResult.data?.name || matchRow.away_team || '원정팀',
+        });
+      }
 
       const lineupIds = (matchLineups || []).map((lineup: any) => lineup.id);
       if (lineupIds.length > 0) {
@@ -144,17 +196,19 @@ export function MatchInfoTab({ matchId }: MatchInfoTabProps) {
           .select('id, team_player:team_players(name, jersey_number)')
           .in('match_lineup_id', lineupIds);
 
-        const nextNameById: Record<string, string> = {};
+        const nextPlayerById: Record<string, { name: string; number: number | null }> = {};
         (lineupPlayers || []).forEach((player: any) => {
           if (player?.id) {
-            const number = player.team_player?.jersey_number;
+            const number = Number.isFinite(player.team_player?.jersey_number)
+              ? Number(player.team_player?.jersey_number)
+              : null;
             const name = player.team_player?.name || '';
-            nextNameById[player.id] = number ? `#${number} ${name}` : name;
+            nextPlayerById[player.id] = { name, number };
           }
         });
-        setPlayerNameById(nextNameById);
+        setPlayerById(nextPlayerById);
       } else {
-        setPlayerNameById({});
+        setPlayerById({});
       }
       setLoading(false);
     }
@@ -185,12 +239,22 @@ export function MatchInfoTab({ matchId }: MatchInfoTabProps) {
     );
   }
 
-  const getPlayerNameById = (
+  const getPlayerDisplayById = (
+    teamSide: MatchEvent['team_side'],
     id: string | null | undefined,
     fallback = '',
   ) => {
     if (!id) return fallback;
-    return playerNameById[id] || fallback;
+    const player = playerById[id];
+    if (!player) return fallback;
+    const teamName =
+      teamSide === 'HOME'
+        ? teamNamesBySide.HOME
+        : teamSide === 'AWAY'
+          ? teamNamesBySide.AWAY
+          : '';
+    const numberText = player.number !== null ? `No. ${player.number}` : 'No.';
+    return `${teamName} ${numberText} ${player.name}`.trim();
   };
 
   return (
@@ -215,7 +279,7 @@ export function MatchInfoTab({ matchId }: MatchInfoTabProps) {
             >
               <EventDescription
                 event={event}
-                getPlayerNameById={getPlayerNameById}
+                getPlayerDisplayById={getPlayerDisplayById}
               />
             </div>
           </div>
