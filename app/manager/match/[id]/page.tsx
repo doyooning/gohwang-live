@@ -659,6 +659,14 @@ export default function MatchControlPage() {
 
   const handleSaveEvent = async () => {
     if (!selectedTeam || !selectedPlayer || !match) return;
+    if (match.status.toLowerCase() !== 'live') {
+      toast({
+        title: '이벤트 기록 불가',
+        description: '경기 상태가 LIVE일 때만 이벤트를 기록할 수 있습니다.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     const supabase = createClient() as any;
     const displayMinute = inputMinute ? parseInt(inputMinute) : 0;
@@ -855,6 +863,15 @@ export default function MatchControlPage() {
   };
 
   const handleSetTime = async (timeType: TimeType) => {
+    if (match?.status?.toLowerCase() !== 'live') {
+      toast({
+        title: '시간 기록 불가',
+        description: '경기 상태가 LIVE일 때만 시간 기록이 가능합니다.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     if (timeType === 'first_half_start' && match?.status?.toLowerCase() !== 'live') {
       toast({
         title: '경기 시작 필요',
@@ -1032,6 +1049,15 @@ export default function MatchControlPage() {
   };
 
   const handlePenaltyResult = async (result: 'success' | 'fail') => {
+    if (match?.status?.toLowerCase() !== 'live') {
+      toast({
+        title: '승부차기 기록 불가',
+        description: '경기 상태가 LIVE일 때만 기록할 수 있습니다.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     const currentRound = currentPenaltyRound;
     const currentTeam = currentPenaltyTeam;
     const firstTeamSide = penaltyFirstTeam === 'home' ? 'HOME' : 'AWAY';

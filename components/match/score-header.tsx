@@ -76,7 +76,7 @@ export function ScoreHeader({
                     : "text-accent"
               }`}
             >
-              {status === "live" ? matchTime : status === "ended" ? "종료" : matchTime}
+              {matchTime}
             </span>
           </div>
           {status === "ended" && shootoutScoreLabel && (

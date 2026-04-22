@@ -342,6 +342,23 @@ export default function AdminPage() {
         variant: "destructive",
       })
     } else {
+      setMatches((prev) =>
+        prev
+          .map((match) =>
+            match.id === selectedMatch.id
+              ? {
+                  ...match,
+                  title: formData.title,
+                  home_team_id: formData.home_team_id,
+                  away_team_id: formData.away_team_id,
+                  match_date: matchDateTime.toISOString(),
+                  location: formData.location || "",
+                  youtube_url: formData.youtube_url || null,
+                }
+              : match
+          )
+          .sort((a, b) => new Date(b.match_date).getTime() - new Date(a.match_date).getTime())
+      )
       toast({
         title: "경기가 수정되었습니다",
         description: `${homeTeam?.name || "홈팀"} vs ${awayTeam?.name || "원정팀"}`,

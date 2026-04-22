@@ -3,7 +3,7 @@ import { notFound } from "next/navigation"
 import { ChevronLeft } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { ScoreHeader } from "@/components/match/score-header"
-import { VideoPlayer } from "@/components/match/video-player"
+import { RealtimeVideoPlayer } from "@/components/match/realtime-video-player"
 import { MatchTabs } from "@/components/match/match-tabs"
 
 function extractYouTubeId(url: string | null): string | undefined {
@@ -104,18 +104,25 @@ export default async function MatchPage({
       ? "ended"
       : "upcoming"
 
+  const getClockLabel = () => {
+    if (timeMarks.extra_end) return "연장 ET"
+    if (timeMarks.extra_start) return `연장 ${elapsedMinutes(timeMarks.extra_start)}'`
+    if (timeMarks.second_half_end) return "후반 FT"
+    if (timeMarks.second_half_start) return `후반 ${elapsedMinutes(timeMarks.second_half_start)}'`
+    if (timeMarks.first_half_end) return "전반 HT"
+    if (timeMarks.first_half_start) return `전반 ${elapsedMinutes(timeMarks.first_half_start)}'`
+    return "LIVE"
+  }
+
   const matchTimeLabel =
-    headerStatus === "live"
-      ? timeMarks.extra_start && !timeMarks.extra_end
-        ? `연장 ${elapsedMinutes(timeMarks.extra_start)}'`
-        : timeMarks.second_half_start && !timeMarks.second_half_end
-        ? `후반 ${elapsedMinutes(timeMarks.second_half_start)}'`
-        : timeMarks.first_half_start && !timeMarks.first_half_end
-        ? `전반 ${elapsedMinutes(timeMarks.first_half_start)}'`
-        : "LIVE"
+    headerStatus === "upcoming"
+      ? "예정"
       : headerStatus === "ended"
-      ? "종료"
-      : "예정"
+      ? (() => {
+          const label = getClockLabel()
+          return label === "LIVE" ? "종료" : label
+        })()
+      : getClockLabel()
 
   const shootoutScoreLabel =
     shootoutHome + shootoutAway > 0 ? `${shootoutHome}-${shootoutAway}` : undefined
@@ -151,9 +158,10 @@ export default async function MatchPage({
 
         <div className="lg:flex-1 lg:flex lg:items-center lg:bg-black">
           <div className="w-full lg:max-h-full">
-            <VideoPlayer
-              videoId={videoId}
-              showThumbnail={Boolean(match.display_status)}
+            <RealtimeVideoPlayer
+              matchId={match.id}
+              initialVideoId={videoId}
+              initialShowThumbnail={Boolean(match.display_status)}
             />
           </div>
         </div>
