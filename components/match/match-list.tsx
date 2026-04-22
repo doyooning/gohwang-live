@@ -139,20 +139,12 @@ export function MatchList() {
 
     fetchMatches()
 
-    // Subscribe to realtime updates
-    const channel = supabase
-      .channel("matches-changes")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "matches" },
-        () => {
-          fetchMatches()
-        }
-      )
-      .subscribe()
+    const pollingId = setInterval(() => {
+      fetchMatches()
+    }, 7000)
 
     return () => {
-      supabase.removeChannel(channel)
+      clearInterval(pollingId)
     }
   }, [])
 

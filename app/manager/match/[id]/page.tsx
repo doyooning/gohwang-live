@@ -424,42 +424,12 @@ export default function MatchControlPage() {
 
     fetchData();
 
-    // Subscribe to realtime updates
-    const eventsChannel = supabase
-      .channel(`match-events-admin-${matchId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'match_events',
-          filter: `match_id=eq.${matchId}`,
-        },
-        () => {
-          fetchData();
-        },
-      )
-      .subscribe();
-
-    const matchChannel = supabase
-      .channel(`match-admin-${matchId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'matches',
-          filter: `id=eq.${matchId}`,
-        },
-        () => {
-          fetchData();
-        },
-      )
-      .subscribe();
+    const pollingId = setInterval(() => {
+      fetchData();
+    }, 5000);
 
     return () => {
-      supabase.removeChannel(eventsChannel);
-      supabase.removeChannel(matchChannel);
+      clearInterval(pollingId);
     };
   }, [isLoading, user, matchId, supabase, syncLineupPlayerStatusesFromEvents]);
 

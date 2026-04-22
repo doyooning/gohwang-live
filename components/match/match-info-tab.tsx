@@ -160,25 +160,12 @@ export function MatchInfoTab({ matchId }: MatchInfoTabProps) {
     }
 
     fetchEvents();
-
-    const channel = supabase
-      .channel(`match-events-${matchId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'match_events',
-          filter: `match_id=eq.${matchId}`,
-        },
-        () => {
-          fetchEvents();
-        },
-      )
-      .subscribe();
+    const intervalId = setInterval(() => {
+      fetchEvents();
+    }, 7000);
 
     return () => {
-      supabase.removeChannel(channel);
+      clearInterval(intervalId);
     };
   }, [matchId]);
 

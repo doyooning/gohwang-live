@@ -3,7 +3,8 @@ import { notFound } from "next/navigation"
 import { ChevronLeft } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { ScoreHeader } from "@/components/match/score-header"
-import { RealtimeVideoPlayer } from "@/components/match/realtime-video-player"
+import { VideoPlayer } from "@/components/match/video-player"
+import { MatchSseRefresher } from "@/components/match/match-sse-refresher"
 import { MatchTabs } from "@/components/match/match-tabs"
 
 function extractYouTubeId(url: string | null): string | undefined {
@@ -131,6 +132,8 @@ export default async function MatchPage({
 
   return (
     <div className="h-screen bg-background overflow-hidden flex flex-col lg:flex-row">
+      <MatchSseRefresher matchId={match.id} />
+
       <div className="flex flex-col lg:flex-1 lg:h-full">
         <div className="bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 border-b border-border lg:border-r">
           <div className="flex items-center gap-2 px-2 py-2">
@@ -158,10 +161,9 @@ export default async function MatchPage({
 
         <div className="lg:flex-1 lg:flex lg:items-center lg:bg-black">
           <div className="w-full lg:max-h-full">
-            <RealtimeVideoPlayer
-              matchId={match.id}
-              initialVideoId={videoId}
-              initialShowThumbnail={Boolean(match.display_status)}
+            <VideoPlayer
+              videoId={videoId}
+              showThumbnail={Boolean(match.display_status)}
             />
           </div>
         </div>

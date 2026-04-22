@@ -162,40 +162,12 @@ export function LineupTab({ matchId }: LineupTabProps) {
 
     fetchData();
 
-    const lineupChannel = supabase
-      .channel(`match-lineups-${matchId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'match_lineups',
-          filter: `match_id=eq.${matchId}`,
-        },
-        () => {
-          fetchData();
-        },
-      )
-      .subscribe();
-
-    const lineupPlayersChannel = supabase
-      .channel(`match-lineup-players-${matchId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'match_lineup_players',
-        },
-        () => {
-          fetchData();
-        },
-      )
-      .subscribe();
+    const pollingId = setInterval(() => {
+      fetchData();
+    }, 7000);
 
     return () => {
-      supabase.removeChannel(lineupChannel);
-      supabase.removeChannel(lineupPlayersChannel);
+      clearInterval(pollingId);
     };
   }, [matchId]);
 
