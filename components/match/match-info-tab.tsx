@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
-  Goal,
   RectangleHorizontal,
   ArrowLeftRight,
   Loader2,
@@ -21,7 +20,11 @@ interface MatchInfoTabProps {
 function EventIcon({ type }: { type: string }) {
   switch (type) {
     case 'goal':
-      return <Goal className="w-4 h-4 text-primary" />;
+      return (
+        <span className="inline-flex items-center justify-center w-4 h-4 text-[14px] leading-none">
+          ⚽
+        </span>
+      );
     case 'yellow_card':
       return (
         <RectangleHorizontal className="w-4 h-4 fill-accent text-accent rotate-90" />
@@ -301,4 +304,3 @@ export function MatchInfoTab({
     </ScrollArea>
   );
 }
-
