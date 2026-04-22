@@ -179,7 +179,12 @@ export default async function MatchPage({
       </div>
 
       <div className="flex-1 lg:flex-none lg:w-[400px] xl:w-[450px] lg:h-full lg:border-l lg:border-border overflow-hidden">
-        <MatchTabs videoId={videoId} matchId={match.id} />
+        <MatchTabs
+          videoId={videoId}
+          matchId={match.id}
+          homeTeamName={homeTeamName}
+          awayTeamName={awayTeamName}
+        />
       </div>
     </div>
   )

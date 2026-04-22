@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
+  Goal,
   RectangleHorizontal,
   ArrowLeftRight,
   Loader2,
@@ -13,16 +14,14 @@ import type { MatchEvent } from '@/lib/types';
 
 interface MatchInfoTabProps {
   matchId?: string;
+  homeTeamName?: string;
+  awayTeamName?: string;
 }
 
 function EventIcon({ type }: { type: string }) {
   switch (type) {
     case 'goal':
-      return (
-        <span className="inline-flex items-center justify-center w-4 h-4 text-[14px] leading-none">
-          ⚽
-        </span>
-      );
+      return <Goal className="w-4 h-4 text-primary" />;
     case 'yellow_card':
       return (
         <RectangleHorizontal className="w-4 h-4 fill-accent text-accent rotate-90" />
@@ -72,15 +71,17 @@ function EventDescription({
   );
 
   switch (event.event_type) {
-    case 'goal':
+    case 'goal': {
+      const assistText = event.description?.trim();
       return (
         <div>
-          <span className="font-medium text-foreground">{scorerName}</span>
-          {event.description && (
-            <span className="text-muted-foreground text-xs ml-1">({event.description})</span>
+          <div className="font-medium text-foreground">{scorerName}</div>
+          {assistText && (
+            <div className="text-muted-foreground text-xs mt-1">{assistText}</div>
           )}
         </div>
       );
+    }
     case 'yellow_card':
     case 'red_card':
       return <span className="font-medium text-foreground">{scorerName}</span>;
@@ -120,7 +121,11 @@ function EventDescription({
   }
 }
 
-export function MatchInfoTab({ matchId }: MatchInfoTabProps) {
+export function MatchInfoTab({
+  matchId,
+  homeTeamName,
+  awayTeamName,
+}: MatchInfoTabProps) {
   const [events, setEvents] = useState<MatchEvent[]>([]);
   const [playerById, setPlayerById] = useState<
     Record<string, { name: string; number: number | null }>
@@ -129,10 +134,18 @@ export function MatchInfoTab({ matchId }: MatchInfoTabProps) {
     HOME: string;
     AWAY: string;
   }>({
-    HOME: '홈팀',
-    AWAY: '원정팀',
+    HOME: homeTeamName || '홈팀',
+    AWAY: awayTeamName || '원정팀',
   });
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!homeTeamName && !awayTeamName) return;
+    setTeamNamesBySide((prev) => ({
+      HOME: homeTeamName || prev.HOME,
+      AWAY: awayTeamName || prev.AWAY,
+    }));
+  }, [homeTeamName, awayTeamName]);
 
   useEffect(() => {
     if (!matchId) {
@@ -183,10 +196,10 @@ export function MatchInfoTab({ matchId }: MatchInfoTabProps) {
             : Promise.resolve({ data: null }),
         ]);
 
-        setTeamNamesBySide({
-          HOME: homeTeamResult.data?.name || matchRow.home_team || '홈팀',
-          AWAY: awayTeamResult.data?.name || matchRow.away_team || '원정팀',
-        });
+        setTeamNamesBySide((prev) => ({
+          HOME: homeTeamResult.data?.name || homeTeamName || matchRow.home_team || prev.HOME,
+          AWAY: awayTeamResult.data?.name || awayTeamName || matchRow.away_team || prev.AWAY,
+        }));
       }
 
       const lineupIds = (matchLineups || []).map((lineup: any) => lineup.id);
@@ -221,7 +234,7 @@ export function MatchInfoTab({ matchId }: MatchInfoTabProps) {
     return () => {
       clearInterval(intervalId);
     };
-  }, [matchId]);
+  }, [matchId, homeTeamName, awayTeamName]);
 
   if (loading) {
     return (
@@ -288,3 +301,4 @@ export function MatchInfoTab({ matchId }: MatchInfoTabProps) {
     </ScrollArea>
   );
 }
+
