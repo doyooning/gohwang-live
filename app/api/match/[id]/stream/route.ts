@@ -4,7 +4,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 interface StreamParams {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 type MatchSnapshot = {
@@ -56,7 +56,7 @@ async function getSnapshot(matchId: string): Promise<MatchSnapshot | null> {
 }
 
 export async function GET(_request: Request, { params }: StreamParams) {
-  const matchId = params.id;
+  const { id: matchId } = await params;
   const encoder = new TextEncoder();
   let intervalId: ReturnType<typeof setInterval> | null = null;
   let closed = false;
@@ -109,4 +109,3 @@ export async function GET(_request: Request, { params }: StreamParams) {
     },
   });
 }
-

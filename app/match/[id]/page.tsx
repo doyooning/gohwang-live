@@ -63,6 +63,7 @@ export default async function MatchPage({
     .select("event_type, team_side, created_at")
     .eq("match_id", id)
     .in("event_type", [
+      "goal",
       "half_start",
       "half_end",
       "second_half_start",
@@ -84,8 +85,14 @@ export default async function MatchPage({
   } = {}
   let shootoutHome = 0
   let shootoutAway = 0
+  let goalHome = 0
+  let goalAway = 0
+  let goalEventCount = 0
 
   ;(matchEvents || []).forEach((event: any) => {
+    if (event.event_type === "goal") goalEventCount += 1
+    if (event.event_type === "goal" && event.team_side === "HOME") goalHome += 1
+    if (event.event_type === "goal" && event.team_side === "AWAY") goalAway += 1
     if (event.event_type === "half_start") timeMarks.first_half_start = event.created_at
     if (event.event_type === "half_end") timeMarks.first_half_end = event.created_at
     if (event.event_type === "second_half_start") timeMarks.second_half_start = event.created_at
@@ -129,6 +136,8 @@ export default async function MatchPage({
     shootoutHome + shootoutAway > 0 ? `${shootoutHome}-${shootoutAway}` : undefined
   const shootoutWinnerSide =
     shootoutHome > shootoutAway ? "home" : shootoutAway > shootoutHome ? "away" : null
+  const displayHomeScore = goalEventCount > 0 ? goalHome : match.home_score
+  const displayAwayScore = goalEventCount > 0 ? goalAway : match.away_score
 
   return (
     <div className="h-screen bg-background overflow-hidden flex flex-col lg:flex-row">
@@ -151,8 +160,8 @@ export default async function MatchPage({
         <ScoreHeader
           homeTeam={homeTeamName}
           awayTeam={awayTeamName}
-          homeScore={match.home_score}
-          awayScore={match.away_score}
+          homeScore={displayHomeScore}
+          awayScore={displayAwayScore}
           matchTime={matchTimeLabel}
           shootoutScoreLabel={shootoutScoreLabel}
           shootoutWinnerSide={shootoutWinnerSide}
