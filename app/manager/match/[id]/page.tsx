@@ -1923,7 +1923,7 @@ export default function MatchControlPage() {
 
           <div className="space-y-3">
             {activePanel === 'goal' && (
-              <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+              <div className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2">
                 <span className="text-sm font-medium text-foreground">자책골</span>
                 <Switch
                   checked={isOwnGoal}
