@@ -133,6 +133,7 @@ export default function MatchControlPage() {
     'yellow_card',
   );
   const [inputMinute, setInputMinute] = useState('');
+  const [isOwnGoal, setIsOwnGoal] = useState(false);
 
   // Time section state
   const [showTimePanel, setShowTimePanel] = useState(false);
@@ -194,21 +195,27 @@ export default function MatchControlPage() {
   const syncMatchScoreFromEvents = useCallback(async () => {
     const { data: goalEvents, error } = await supabase
       .from('match_events')
-      .select('team_side')
+      .select('event_type, team_side')
       .eq('match_id', matchId)
-      .eq('event_type', 'goal');
+      .in('event_type', ['goal', 'own_goal']);
 
     if (error) {
       console.error('Error syncing match score from events:', error);
       return;
     }
 
-    const homeScore = (goalEvents || []).filter(
-      (event: any) => event.team_side === 'HOME',
-    ).length;
-    const awayScore = (goalEvents || []).filter(
-      (event: any) => event.team_side === 'AWAY',
-    ).length;
+    let homeScore = 0;
+    let awayScore = 0;
+    (goalEvents || []).forEach((event: any) => {
+      if (event.event_type === 'goal') {
+        if (event.team_side === 'HOME') homeScore += 1;
+        if (event.team_side === 'AWAY') awayScore += 1;
+      }
+      if (event.event_type === 'own_goal') {
+        if (event.team_side === 'HOME') awayScore += 1;
+        if (event.team_side === 'AWAY') homeScore += 1;
+      }
+    });
 
     const { error: updateError } = await supabase
       .from('matches')
@@ -402,13 +409,19 @@ export default function MatchControlPage() {
 
         if (matchResult.data) {
           const homeGoals = nextEvents.filter(
-            (event) =>
-              event.event_type === 'goal' && event.team_side === 'HOME',
-          ).length;
+            (event) => event.event_type === 'goal' || event.event_type === 'own_goal',
+          ).reduce((acc, event) => {
+            if (event.event_type === 'goal' && event.team_side === 'HOME') return acc + 1;
+            if (event.event_type === 'own_goal' && event.team_side === 'AWAY') return acc + 1;
+            return acc;
+          }, 0);
           const awayGoals = nextEvents.filter(
-            (event) =>
-              event.event_type === 'goal' && event.team_side === 'AWAY',
-          ).length;
+            (event) => event.event_type === 'goal' || event.event_type === 'own_goal',
+          ).reduce((acc, event) => {
+            if (event.event_type === 'goal' && event.team_side === 'AWAY') return acc + 1;
+            if (event.event_type === 'own_goal' && event.team_side === 'HOME') return acc + 1;
+            return acc;
+          }, 0);
 
           if (
             homeGoals !== matchResult.data.home_score ||
@@ -645,6 +658,7 @@ export default function MatchControlPage() {
     setSelectedAssistPlayer('');
     setCardType('yellow_card');
     setInputMinute('');
+    setIsOwnGoal(false);
     setActivePanel(null);
   };
 
@@ -681,7 +695,9 @@ export default function MatchControlPage() {
     const eventType =
       activePanel === 'yellow_card' || activePanel === 'red_card'
         ? cardType
-        : activePanel!;
+        : activePanel === 'goal' && isOwnGoal
+          ? 'own_goal'
+          : activePanel!;
 
     if (
       (activePanel === 'goal' ||
@@ -718,6 +734,7 @@ export default function MatchControlPage() {
 
     if (
       activePanel === 'goal' &&
+      !isOwnGoal &&
       selectedAssistPlayer &&
       selectedAssistPlayer !== 'none'
     ) {
@@ -729,12 +746,22 @@ export default function MatchControlPage() {
         assistPlayerId = assistPlayer.id;
       }
     }
+    if (eventType === 'yellow_card') {
+      description = '경고 카드';
+    }
+    if (eventType === 'red_card') {
+      description = '퇴장';
+    }
+    if (eventType === 'own_goal') {
+      description = '자책골';
+      assistPlayerId = null;
+    }
     if (activePanel === 'substitution' && selectedPlayerOut) {
       const playerOut = substitutionOutCandidates.find(
         (p) => p.id === selectedPlayerOut,
       );
       if (playerOut) {
-        description = playerOut.name;
+        description = `교체 OUT: #${playerOut.number} ${playerOut.name}`;
         substitutedInPlayerId = player.id;
         substitutedOutPlayerId = playerOut.id;
       } else {
@@ -1050,6 +1077,14 @@ export default function MatchControlPage() {
       });
       return;
     }
+    if (!matchTimes.second_half_end) {
+      toast({
+        title: '승부차기 기록 불가',
+        description: '후반 종료 이후부터 승부차기를 기록할 수 있습니다.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     const currentRound = currentPenaltyRound;
     const currentTeam = currentPenaltyTeam;
@@ -1197,10 +1232,15 @@ export default function MatchControlPage() {
     [players],
   );
 
+  /*
   const getEventIcon = (type: string) => {
     switch (type) {
       case 'goal':
         return <Goal className="size-4" />;
+      case 'own_goal':
+        return <span className="text-red-500 text-base leading-none">⚽</span>;
+      case 'own_goal':
+        return `${scorerName} 자책골`;
       case 'yellow_card':
         return <div className="size-3 rounded-sm bg-yellow-400" />;
       case 'red_card':
@@ -1236,6 +1276,72 @@ export default function MatchControlPage() {
         return event.description
           ? `${scorerName} 득점 (${event.description})`
           : `${scorerName} 득점`;
+      case 'yellow_card':
+        return `${scorerName} 경고`;
+      case 'red_card':
+        return `${scorerName} 퇴장`;
+      case 'substitution':
+        return subOutName
+          ? `${subOutName} OUT / ${subInName} IN`
+          : `${subInName} IN`;
+      case 'half_start':
+      case 'half_end':
+      case 'second_half_start':
+      case 'second_half_end':
+      case 'extra':
+      case 'extra_time_start':
+      case 'extra_time_end':
+        return event.description || '시간 기록';
+      default:
+        return scorerName || event.description || '이벤트';
+    }
+  };
+
+  */
+
+  const getEventIcon = (type: string) => {
+    switch (type) {
+      case 'goal':
+        return <Goal className="size-4" />;
+      case 'own_goal':
+        return <span className="text-red-500 text-base leading-none">⚽</span>;
+      case 'yellow_card':
+        return <div className="size-3 rounded-sm bg-yellow-400" />;
+      case 'red_card':
+        return <div className="size-3 rounded-sm bg-red-500" />;
+      case 'substitution':
+        return <RefreshCw className="size-4" />;
+      case 'half_start':
+      case 'half_end':
+      case 'second_half_start':
+      case 'second_half_end':
+      case 'extra':
+      case 'extra_time_start':
+      case 'extra_time_end':
+      case 'shootout_goal':
+      case 'shootout_missed':
+        return <Timer className="size-4" />;
+      default:
+        return null;
+    }
+  };
+
+  const getEventLabel = (event: MatchEvent) => {
+    const scorerName = getPlayerDisplayByLineupPlayerId(event.player_id) || '';
+    const subInName =
+      getPlayerDisplayByLineupPlayerId(event.sub_in_player_id) || '';
+    const subOutName =
+      getPlayerDisplayByLineupPlayerId(event.sub_out_player_id) ||
+      event.description ||
+      '';
+
+    switch (event.event_type) {
+      case 'goal':
+        return event.description
+          ? `${scorerName} 득점 (${event.description})`
+          : `${scorerName} 득점`;
+      case 'own_goal':
+        return `${scorerName} 자책골`;
       case 'yellow_card':
         return `${scorerName} 경고`;
       case 'red_card':
@@ -1512,7 +1618,16 @@ export default function MatchControlPage() {
             size="lg"
             variant={showPenaltyPanel ? 'default' : 'secondary'}
             className="h-12 flex-col gap-1"
+            disabled={!matchTimes.second_half_end}
             onClick={() => {
+              if (!matchTimes.second_half_end) {
+                toast({
+                  title: '승부차기 기록 불가',
+                  description: '후반 종료 이후부터 승부차기를 기록할 수 있습니다.',
+                  variant: 'destructive',
+                });
+                return;
+              }
               resetForm();
               setShowPenaltyPanel(!showPenaltyPanel);
               setShowTimePanel(false);
@@ -1807,6 +1922,19 @@ export default function MatchControlPage() {
           </div>
 
           <div className="space-y-3">
+            {activePanel === 'goal' && (
+              <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+                <span className="text-sm font-medium text-foreground">자책골</span>
+                <Switch
+                  checked={isOwnGoal}
+                  onCheckedChange={(checked) => {
+                    setIsOwnGoal(checked);
+                    setSelectedAssistPlayer('none');
+                  }}
+                />
+              </div>
+            )}
+
             {/* Team Select */}
             <div className="grid grid-cols-2 gap-2">
               <Button
@@ -1891,7 +2019,7 @@ export default function MatchControlPage() {
                 </Select>
 
                 {/* Assist Player Select (for goals) */}
-                {activePanel === 'goal' && (
+                {activePanel === 'goal' && !isOwnGoal && (
                   <Select
                     value={selectedAssistPlayer}
                     onValueChange={setSelectedAssistPlayer}

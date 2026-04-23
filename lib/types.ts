@@ -56,6 +56,7 @@ export interface MatchEvent {
   match_id: string;
   event_type:
     | 'goal'
+    | 'own_goal'
     | 'yellow_card'
     | 'red_card'
     | 'substitution'

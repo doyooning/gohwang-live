@@ -64,6 +64,7 @@ export default async function MatchPage({
     .eq("match_id", id)
     .in("event_type", [
       "goal",
+      "own_goal",
       "half_start",
       "half_end",
       "second_half_start",
@@ -90,9 +91,11 @@ export default async function MatchPage({
   let goalEventCount = 0
 
   ;(matchEvents || []).forEach((event: any) => {
-    if (event.event_type === "goal") goalEventCount += 1
+    if (event.event_type === "goal" || event.event_type === "own_goal") goalEventCount += 1
     if (event.event_type === "goal" && event.team_side === "HOME") goalHome += 1
     if (event.event_type === "goal" && event.team_side === "AWAY") goalAway += 1
+    if (event.event_type === "own_goal" && event.team_side === "HOME") goalAway += 1
+    if (event.event_type === "own_goal" && event.team_side === "AWAY") goalHome += 1
     if (event.event_type === "half_start") timeMarks.first_half_start = event.created_at
     if (event.event_type === "half_end") timeMarks.first_half_end = event.created_at
     if (event.event_type === "second_half_start") timeMarks.second_half_start = event.created_at

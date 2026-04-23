@@ -17,11 +17,52 @@ interface MatchInfoTabProps {
   awayTeamName?: string;
 }
 
+/*
 function EventIcon({ type }: { type: string }) {
   switch (type) {
     case 'goal':
       return (
         <span className="inline-flex items-center justify-center w-4 h-4 text-[14px] leading-none">
+          ⚽
+        </span>
+      );
+    case 'yellow_card':
+      return (
+        <RectangleHorizontal className="w-4 h-4 fill-accent text-accent rotate-90" />
+      );
+    case 'red_card':
+      return (
+        <RectangleHorizontal className="w-4 h-4 fill-destructive text-destructive rotate-90" />
+      );
+    case 'substitution':
+      return <ArrowLeftRight className="w-4 h-4 text-muted-foreground" />;
+    case 'half_start':
+    case 'half_end':
+    case 'second_half_start':
+    case 'second_half_end':
+    case 'extra':
+    case 'extra_time_start':
+    case 'extra_time_end':
+    case 'shootout_goal':
+    case 'shootout_missed':
+      return <Timer className="w-4 h-4 text-muted-foreground" />;
+    default:
+      return null;
+  }
+}
+*/
+
+function EventIcon({ type }: { type: string }) {
+  switch (type) {
+    case 'goal':
+      return (
+        <span className="inline-flex items-center justify-center w-4 h-4 text-[14px] leading-none">
+          ⚽
+        </span>
+      );
+    case 'own_goal':
+      return (
+        <span className="inline-flex items-center justify-center w-4 h-4 text-[14px] leading-none text-red-500">
           ⚽
         </span>
       );
@@ -85,19 +126,40 @@ function EventDescription({
         </div>
       );
     }
+    case 'own_goal':
+      return (
+        <div>
+          <div className="font-medium text-foreground">{scorerName}</div>
+          <div className="text-muted-foreground text-xs mt-1">
+            {event.description || '자책골'}
+          </div>
+        </div>
+      );
     case 'yellow_card':
     case 'red_card':
-      return <span className="font-medium text-foreground">{scorerName}</span>;
+      return (
+        <div>
+          <div className="font-medium text-foreground">{scorerName}</div>
+          {event.description && (
+            <div className="text-muted-foreground text-xs mt-1">{event.description}</div>
+          )}
+        </div>
+      );
     case 'substitution':
       return (
-        <div className="flex items-center gap-1">
-          <span className="text-primary text-sm">IN</span>
-          <span className="font-medium text-foreground">{subInName}</span>
-          {subOutName && (
-            <>
-              <span className="text-destructive text-sm ml-2">OUT</span>
-              <span className="text-muted-foreground">{subOutName}</span>
-            </>
+        <div>
+          <div className="flex items-center gap-1">
+            <span className="text-primary text-sm">IN</span>
+            <span className="font-medium text-foreground">{subInName}</span>
+            {subOutName && (
+              <>
+                <span className="text-destructive text-sm ml-2">OUT</span>
+                <span className="text-muted-foreground">{subOutName}</span>
+              </>
+            )}
+          </div>
+          {event.description && (
+            <div className="text-muted-foreground text-xs mt-1">{event.description}</div>
           )}
         </div>
       );
