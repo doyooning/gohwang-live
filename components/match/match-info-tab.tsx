@@ -237,7 +237,7 @@ export function MatchInfoTab({
       const [{ data: matchRow }, { data: matchLineups }] = await Promise.all([
         supabase
           .from('matches')
-          .select('home_team_id, away_team_id, home_team, away_team')
+          .select('home_team_id, away_team_id')
           .eq('id', matchId)
           .single(),
         supabase.from('match_lineups').select('id').eq('match_id', matchId),
@@ -262,8 +262,8 @@ export function MatchInfoTab({
         ]);
 
         setTeamNamesBySide((prev) => ({
-          HOME: homeTeamResult.data?.name || homeTeamName || matchRow.home_team || prev.HOME,
-          AWAY: awayTeamResult.data?.name || awayTeamName || matchRow.away_team || prev.AWAY,
+          HOME: homeTeamResult.data?.name || homeTeamName || prev.HOME,
+          AWAY: awayTeamResult.data?.name || awayTeamName || prev.AWAY,
         }));
       }
 

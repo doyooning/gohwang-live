@@ -14,7 +14,7 @@ interface AuthContextType {
   user: User | null
   isLoading: boolean
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
-  logout: () => void
+  logout: () => Promise<{ success: boolean; error?: string }>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -134,9 +134,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     const supabase = createClient()
-    await supabase.auth.signOut()
+    const { error } = await supabase.auth.signOut()
+    if (error) {
+      return { success: false, error: error.message }
+    }
     setUser(null)
     router.push("/login")
+    return { success: true }
   }, [router])
 
   return <AuthContext.Provider value={{ user, isLoading, login, logout }}>{children}</AuthContext.Provider>

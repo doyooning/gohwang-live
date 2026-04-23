@@ -451,6 +451,21 @@ export default function AdminPage() {
     return "LIVE"
   }
 
+  const handleLogout = async () => {
+    const result = await logout()
+    if (result.success) {
+      toast({
+        title: "로그아웃되었습니다",
+      })
+      return
+    }
+    toast({
+      title: "로그아웃 실패",
+      description: result.error || "다시 시도해주세요.",
+      variant: "destructive",
+    })
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -501,7 +516,7 @@ export default function AdminPage() {
               <Users className="size-4 mr-1" />
               팀 관리
             </Button>
-            <Button variant="ghost" size="icon" onClick={logout}>
+            <Button variant="ghost" size="icon" onClick={handleLogout}>
               <LogOut className="size-5" />
             </Button>
           </div>
