@@ -14,7 +14,6 @@ export function MatchSseRefresher({ matchId }: MatchSseRefresherProps) {
   useEffect(() => {
     let source: EventSource | null = null;
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
-    let fallbackPollingId: ReturnType<typeof setInterval> | null = null;
     let disposed = false;
 
     const connect = () => {
@@ -23,7 +22,7 @@ export function MatchSseRefresher({ matchId }: MatchSseRefresherProps) {
       source = new EventSource(`/api/match/${matchId}/stream`);
       source.addEventListener("update", () => {
         const now = Date.now();
-        if (now - lastRefreshAtRef.current < 1200) return;
+        if (now - lastRefreshAtRef.current < 1500) return;
         lastRefreshAtRef.current = now;
         router.refresh();
       });
@@ -36,17 +35,10 @@ export function MatchSseRefresher({ matchId }: MatchSseRefresherProps) {
     };
 
     connect();
-    fallbackPollingId = setInterval(() => {
-      const now = Date.now();
-      if (now - lastRefreshAtRef.current < 3000) return;
-      lastRefreshAtRef.current = now;
-      router.refresh();
-    }, 7000);
 
     return () => {
       disposed = true;
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
-      if (fallbackPollingId) clearInterval(fallbackPollingId);
       source?.close();
     };
   }, [matchId, router]);
