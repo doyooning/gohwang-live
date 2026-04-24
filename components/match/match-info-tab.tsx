@@ -34,8 +34,8 @@ const DEFAULT_META: MetaState = {
   lineupIds: [],
 };
 
-const EVENT_POLL_MS = 10000;
-const META_CHECK_MS = 30000;
+const EVENT_POLL_MS = 12000;
+const META_CHECK_MS = 45000;
 
 function EventIcon({ type }: { type: string }) {
   switch (type) {
@@ -205,7 +205,15 @@ export function MatchInfoTab({
   }, [matchId, supabase]);
 
   const fetchMetaFull = useCallback(async (): Promise<MetaState> => {
-    if (!matchId) return meta;
+    if (!matchId) {
+      return {
+        ...DEFAULT_META,
+        teamNamesBySide: {
+          HOME: homeTeamName || DEFAULT_META.teamNamesBySide.HOME,
+          AWAY: awayTeamName || DEFAULT_META.teamNamesBySide.AWAY,
+        },
+      };
+    }
 
     const { data: matchRow } = await supabase
       .from('matches')
@@ -219,7 +227,7 @@ export function MatchInfoTab({
       .eq('match_id', matchId)
       .order('updated_at', { ascending: false });
 
-    const lineupIds = (lineups || []).map((l: any) => l.id as string);
+    const lineupIds = (lineups || []).map((l: any) => l.id as string).sort();
 
     const [homeTeamResult, awayTeamResult] = await Promise.all([
       matchRow?.home_team_id
@@ -269,17 +277,17 @@ export function MatchInfoTab({
         HOME:
           homeTeamResult.data?.name ||
           homeTeamName ||
-          meta.teamNamesBySide.HOME,
+          DEFAULT_META.teamNamesBySide.HOME,
         AWAY:
           awayTeamResult.data?.name ||
           awayTeamName ||
-          meta.teamNamesBySide.AWAY,
+          DEFAULT_META.teamNamesBySide.AWAY,
       },
       playerById,
       signature,
       lineupIds,
     };
-  }, [awayTeamName, homeTeamName, matchId, meta, supabase]);
+  }, [awayTeamName, homeTeamName, matchId, supabase]);
 
   const checkMetaSignatureLight = useCallback(async () => {
     if (!matchId) return '';
@@ -296,7 +304,7 @@ export function MatchInfoTab({
       .eq('match_id', matchId)
       .order('updated_at', { ascending: false });
 
-    const lineupIds = (lineups || []).map((l: any) => l.id as string);
+    const lineupIds = (lineups || []).map((l: any) => l.id as string).sort();
     let latestPlayerUpdatedAt = '';
     if (lineupIds.length > 0) {
       const { data: latestPlayer } = await supabase
@@ -433,4 +441,3 @@ export function MatchInfoTab({
     </ScrollArea>
   );
 }
-

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChatTab } from "./chat-tab";
 import { MatchInfoTab } from "./match-info-tab";
@@ -18,8 +19,14 @@ export function MatchTabs({
   homeTeamName,
   awayTeamName,
 }: MatchTabsProps) {
+  const [activeTab, setActiveTab] = useState("info");
+
   return (
-    <Tabs defaultValue="info" className="w-full h-full flex flex-col">
+    <Tabs
+      value={activeTab}
+      onValueChange={setActiveTab}
+      className="w-full h-full flex flex-col"
+    >
       <TabsList className="w-full grid grid-cols-3 bg-card border-b border-border rounded-none h-12 shrink-0">
         <TabsTrigger
           value="chat"
@@ -42,19 +49,21 @@ export function MatchTabs({
       </TabsList>
 
       <TabsContent value="chat" className="mt-0 flex-1 overflow-hidden">
-        <ChatTab videoId={videoId} />
+        {activeTab === "chat" && <ChatTab videoId={videoId} />}
       </TabsContent>
 
       <TabsContent value="info" className="mt-0 flex-1 overflow-hidden">
-        <MatchInfoTab
-          matchId={matchId}
-          homeTeamName={homeTeamName}
-          awayTeamName={awayTeamName}
-        />
+        {activeTab === "info" && (
+          <MatchInfoTab
+            matchId={matchId}
+            homeTeamName={homeTeamName}
+            awayTeamName={awayTeamName}
+          />
+        )}
       </TabsContent>
 
       <TabsContent value="lineup" className="mt-0 flex-1 overflow-hidden">
-        <LineupTab matchId={matchId} />
+        {activeTab === "lineup" && <LineupTab matchId={matchId} />}
       </TabsContent>
     </Tabs>
   );
