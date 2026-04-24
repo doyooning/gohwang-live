@@ -13,6 +13,7 @@ export interface Match {
   display_status?: boolean;
   status: 'scheduled' | 'live' | 'ended' | 'SCHEDULED' | 'LIVE' | 'ENDED';
   created_at: string;
+  updated_at?: string;
 }
 
 export interface Team {
@@ -47,6 +48,7 @@ export interface MatchLineupPlayer {
   lineup_role: 'STARTER' | 'SUBSTITUTE';
   player_status?: 'available' | 'sub_in' | 'sub_out' | 'sent_off';
   created_at: string;
+  updated_at?: string;
   // Joined data
   team_player?: TeamPlayer;
 }

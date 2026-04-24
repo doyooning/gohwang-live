@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -17,40 +17,20 @@ interface MatchInfoTabProps {
   awayTeamName?: string;
 }
 
-/*
-function EventIcon({ type }: { type: string }) {
-  switch (type) {
-    case 'goal':
-      return (
-        <span className="inline-flex items-center justify-center w-4 h-4 text-[14px] leading-none">
-          ⚽
-        </span>
-      );
-    case 'yellow_card':
-      return (
-        <RectangleHorizontal className="w-4 h-4 fill-accent text-accent rotate-90" />
-      );
-    case 'red_card':
-      return (
-        <RectangleHorizontal className="w-4 h-4 fill-destructive text-destructive rotate-90" />
-      );
-    case 'substitution':
-      return <ArrowLeftRight className="w-4 h-4 text-muted-foreground" />;
-    case 'half_start':
-    case 'half_end':
-    case 'second_half_start':
-    case 'second_half_end':
-    case 'extra':
-    case 'extra_time_start':
-    case 'extra_time_end':
-    case 'shootout_goal':
-    case 'shootout_missed':
-      return <Timer className="w-4 h-4 text-muted-foreground" />;
-    default:
-      return null;
-  }
+interface MetaState {
+  teamNamesBySide: {
+    HOME: string;
+    AWAY: string;
+  };
+  playerById: Record<string, { name: string; number: number | null }>;
+  signature: string;
 }
-*/
+
+const DEFAULT_META: MetaState = {
+  teamNamesBySide: { HOME: '홈팀', AWAY: '원정팀' },
+  playerById: {},
+  signature: '',
+};
 
 function EventIcon({ type }: { type: string }) {
   switch (type) {
@@ -192,25 +172,123 @@ export function MatchInfoTab({
   awayTeamName,
 }: MatchInfoTabProps) {
   const [events, setEvents] = useState<MatchEvent[]>([]);
-  const [playerById, setPlayerById] = useState<
-    Record<string, { name: string; number: number | null }>
-  >({});
-  const [teamNamesBySide, setTeamNamesBySide] = useState<{
-    HOME: string;
-    AWAY: string;
-  }>({
-    HOME: homeTeamName || '홈팀',
-    AWAY: awayTeamName || '원정팀',
+  const [meta, setMeta] = useState<MetaState>({
+    ...DEFAULT_META,
+    teamNamesBySide: {
+      HOME: homeTeamName || DEFAULT_META.teamNamesBySide.HOME,
+      AWAY: awayTeamName || DEFAULT_META.teamNamesBySide.AWAY,
+    },
   });
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!homeTeamName && !awayTeamName) return;
-    setTeamNamesBySide((prev) => ({
-      HOME: homeTeamName || prev.HOME,
-      AWAY: awayTeamName || prev.AWAY,
-    }));
-  }, [homeTeamName, awayTeamName]);
+  const fetchEvents = useCallback(async () => {
+    if (!matchId) return;
+    const supabase = createClient() as any;
+    const { data, error } = await supabase
+      .from('match_events')
+      .select('*')
+      .eq('match_id', matchId)
+      .order('sort_minute', { ascending: false })
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching events:', error);
+      return;
+    }
+    setEvents((data || []) as MatchEvent[]);
+  }, [matchId]);
+
+  const buildMeta = useCallback(async (): Promise<MetaState> => {
+    const supabase = createClient() as any;
+    if (!matchId) return meta;
+
+    const { data: matchRow } = await supabase
+      .from('matches')
+      .select('home_team_id, away_team_id')
+      .eq('id', matchId)
+      .single();
+
+    const { data: matchLineups } = await supabase
+      .from('match_lineups')
+      .select('id, updated_at')
+      .eq('match_id', matchId)
+      .order('updated_at', { ascending: false });
+
+    const lineupIds = (matchLineups || []).map((lineup: any) => lineup.id);
+
+    const [homeTeamResult, awayTeamResult] = await Promise.all([
+      matchRow?.home_team_id
+        ? supabase.from('teams').select('name').eq('id', matchRow.home_team_id).single()
+        : Promise.resolve({ data: null }),
+      matchRow?.away_team_id
+        ? supabase.from('teams').select('name').eq('id', matchRow.away_team_id).single()
+        : Promise.resolve({ data: null }),
+    ]);
+
+    let playerById: Record<string, { name: string; number: number | null }> = {};
+    let latestPlayerUpdatedAt = '';
+    let playerCount = 0;
+    if (lineupIds.length > 0) {
+      const { data: lineupPlayers } = await supabase
+        .from('match_lineup_players')
+        .select(
+          'id, updated_at, team_player:team_players(name, jersey_number)',
+        )
+        .in('match_lineup_id', lineupIds)
+        .order('updated_at', { ascending: false });
+
+      playerCount = (lineupPlayers || []).length;
+      latestPlayerUpdatedAt = lineupPlayers?.[0]?.updated_at || '';
+
+      (lineupPlayers || []).forEach((player: any) => {
+        if (!player?.id) return;
+        const number = Number.isFinite(player.team_player?.jersey_number)
+          ? Number(player.team_player?.jersey_number)
+          : null;
+        const name = player.team_player?.name || '';
+        playerById[player.id] = { name, number };
+      });
+    }
+
+    const latestLineupUpdatedAt = matchLineups?.[0]?.updated_at || '';
+    const signature = [
+      `lineups:${(matchLineups || []).length}`,
+      `lineups_updated:${latestLineupUpdatedAt}`,
+      `players:${playerCount}`,
+      `players_updated:${latestPlayerUpdatedAt}`,
+      `home_id:${matchRow?.home_team_id || ''}`,
+      `away_id:${matchRow?.away_team_id || ''}`,
+    ].join('|');
+
+    return {
+      teamNamesBySide: {
+        HOME:
+          homeTeamResult.data?.name ||
+          homeTeamName ||
+          meta.teamNamesBySide.HOME,
+        AWAY:
+          awayTeamResult.data?.name ||
+          awayTeamName ||
+          meta.teamNamesBySide.AWAY,
+      },
+      playerById,
+      signature,
+    };
+  }, [awayTeamName, homeTeamName, matchId, meta]);
+
+  const fetchMeta = useCallback(async () => {
+    if (!matchId) return;
+    const nextMeta = await buildMeta();
+    setMeta(nextMeta);
+  }, [buildMeta, matchId]);
+
+  const checkMetaChanges = useCallback(async () => {
+    if (!matchId) return;
+    const nextMeta = await buildMeta();
+    if (nextMeta.signature !== meta.signature) {
+      setMeta(nextMeta);
+    }
+  }, [buildMeta, matchId, meta.signature]);
 
   useEffect(() => {
     if (!matchId) {
@@ -218,88 +296,37 @@ export function MatchInfoTab({
       return;
     }
 
-    const supabase = createClient() as any;
+    let cancelled = false;
+    const init = async () => {
+      await Promise.all([fetchMeta(), fetchEvents()]);
+      if (!cancelled) setLoading(false);
+    };
+    init();
 
-    async function fetchEvents() {
-      const { data, error } = await supabase
-        .from('match_events')
-        .select('*')
-        .eq('match_id', matchId)
-        .order('sort_minute', { ascending: false })
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching events:', error);
-      } else {
-        setEvents(data || []);
-      }
-
-      const [{ data: matchRow }, { data: matchLineups }] = await Promise.all([
-        supabase
-          .from('matches')
-          .select('home_team_id, away_team_id')
-          .eq('id', matchId)
-          .single(),
-        supabase.from('match_lineups').select('id').eq('match_id', matchId),
-      ]);
-
-      if (matchRow) {
-        const [homeTeamResult, awayTeamResult] = await Promise.all([
-          matchRow.home_team_id
-            ? supabase
-                .from('teams')
-                .select('name')
-                .eq('id', matchRow.home_team_id)
-                .single()
-            : Promise.resolve({ data: null }),
-          matchRow.away_team_id
-            ? supabase
-                .from('teams')
-                .select('name')
-                .eq('id', matchRow.away_team_id)
-                .single()
-            : Promise.resolve({ data: null }),
-        ]);
-
-        setTeamNamesBySide((prev) => ({
-          HOME: homeTeamResult.data?.name || homeTeamName || prev.HOME,
-          AWAY: awayTeamResult.data?.name || awayTeamName || prev.AWAY,
-        }));
-      }
-
-      const lineupIds = (matchLineups || []).map((lineup: any) => lineup.id);
-      if (lineupIds.length > 0) {
-        const { data: lineupPlayers } = await supabase
-          .from('match_lineup_players')
-          .select('id, team_player:team_players(name, jersey_number)')
-          .in('match_lineup_id', lineupIds);
-
-        const nextPlayerById: Record<string, { name: string; number: number | null }> = {};
-        (lineupPlayers || []).forEach((player: any) => {
-          if (player?.id) {
-            const number = Number.isFinite(player.team_player?.jersey_number)
-              ? Number(player.team_player?.jersey_number)
-              : null;
-            const name = player.team_player?.name || '';
-            nextPlayerById[player.id] = { name, number };
-          }
-        });
-        setPlayerById(nextPlayerById);
-      } else {
-        setPlayerById({});
-      }
-      setLoading(false);
-    }
-
-    fetchEvents();
-    const intervalId = setInterval(() => {
+    const eventsPollingId = setInterval(() => {
       fetchEvents();
     }, 7000);
+    const metaPollingId = setInterval(() => {
+      checkMetaChanges();
+    }, 12000);
 
     return () => {
-      clearInterval(intervalId);
+      cancelled = true;
+      clearInterval(eventsPollingId);
+      clearInterval(metaPollingId);
     };
-  }, [matchId, homeTeamName, awayTeamName]);
+  }, [checkMetaChanges, fetchEvents, fetchMeta, matchId]);
+
+  useEffect(() => {
+    if (!homeTeamName && !awayTeamName) return;
+    setMeta((prev) => ({
+      ...prev,
+      teamNamesBySide: {
+        HOME: homeTeamName || prev.teamNamesBySide.HOME,
+        AWAY: awayTeamName || prev.teamNamesBySide.AWAY,
+      },
+    }));
+  }, [awayTeamName, homeTeamName]);
 
   if (loading) {
     return (
@@ -323,13 +350,13 @@ export function MatchInfoTab({
     fallback = '',
   ) => {
     if (!id) return fallback;
-    const player = playerById[id];
+    const player = meta.playerById[id];
     if (!player) return fallback;
     const teamName =
       teamSide === 'HOME'
-        ? teamNamesBySide.HOME
+        ? meta.teamNamesBySide.HOME
         : teamSide === 'AWAY'
-          ? teamNamesBySide.AWAY
+          ? meta.teamNamesBySide.AWAY
           : '';
     const numberText = player.number !== null ? `No. ${player.number}` : 'No.';
     return `${teamName} ${numberText} ${player.name}`.trim();
@@ -353,7 +380,9 @@ export function MatchInfoTab({
               <EventIcon type={event.event_type} />
             </div>
             <div
-              className={`flex-1 ${event.team_side === 'AWAY' ? 'text-right' : 'text-left'}`}
+              className={`flex-1 ${
+                event.team_side === 'AWAY' ? 'text-right' : 'text-left'
+              }`}
             >
               <EventDescription
                 event={event}
@@ -366,3 +395,4 @@ export function MatchInfoTab({
     </ScrollArea>
   );
 }
+
