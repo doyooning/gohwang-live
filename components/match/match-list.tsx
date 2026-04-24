@@ -151,7 +151,6 @@ export function MatchList() {
     (summaryEvents || []).forEach((event: any) => {
       const matchId = event.match_id as string;
       if (!nextTimesById[matchId]) nextTimesById[matchId] = {};
-      if (!nextShootout[matchId]) nextShootout[matchId] = { home: 0, away: 0 };
 
       if (event.event_type === "half_start")
         nextTimesById[matchId].first_half_start = event.created_at;
@@ -167,8 +166,12 @@ export function MatchList() {
         nextTimesById[matchId].extra_end = event.created_at;
 
       if (event.event_type === "shootout_goal") {
+        if (!nextShootout[matchId]) nextShootout[matchId] = { home: 0, away: 0 };
         if (event.team_side === "HOME") nextShootout[matchId].home += 1;
         if (event.team_side === "AWAY") nextShootout[matchId].away += 1;
+      }
+      if (event.event_type === "shootout_missed" && !nextShootout[matchId]) {
+        nextShootout[matchId] = { home: 0, away: 0 };
       }
     });
 
@@ -377,4 +380,3 @@ export function MatchList() {
     </div>
   );
 }
-
