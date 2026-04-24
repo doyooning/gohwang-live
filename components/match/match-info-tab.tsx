@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -24,13 +24,18 @@ interface MetaState {
   };
   playerById: Record<string, { name: string; number: number | null }>;
   signature: string;
+  lineupIds: string[];
 }
 
 const DEFAULT_META: MetaState = {
   teamNamesBySide: { HOME: '홈팀', AWAY: '원정팀' },
   playerById: {},
   signature: '',
+  lineupIds: [],
 };
+
+const EVENT_POLL_MS = 10000;
+const META_CHECK_MS = 30000;
 
 function EventIcon({ type }: { type: string }) {
   switch (type) {
@@ -171,6 +176,7 @@ export function MatchInfoTab({
   homeTeamName,
   awayTeamName,
 }: MatchInfoTabProps) {
+  const supabase = useMemo(() => createClient() as any, []);
   const [events, setEvents] = useState<MatchEvent[]>([]);
   const [meta, setMeta] = useState<MetaState>({
     ...DEFAULT_META,
@@ -180,10 +186,10 @@ export function MatchInfoTab({
     },
   });
   const [loading, setLoading] = useState(true);
+  const metaSignatureRef = useRef('');
 
   const fetchEvents = useCallback(async () => {
     if (!matchId) return;
-    const supabase = createClient() as any;
     const { data, error } = await supabase
       .from('match_events')
       .select('*')
@@ -196,25 +202,24 @@ export function MatchInfoTab({
       return;
     }
     setEvents((data || []) as MatchEvent[]);
-  }, [matchId]);
+  }, [matchId, supabase]);
 
-  const buildMeta = useCallback(async (): Promise<MetaState> => {
-    const supabase = createClient() as any;
+  const fetchMetaFull = useCallback(async (): Promise<MetaState> => {
     if (!matchId) return meta;
 
     const { data: matchRow } = await supabase
       .from('matches')
-      .select('home_team_id, away_team_id')
+      .select('home_team_id, away_team_id, updated_at')
       .eq('id', matchId)
       .single();
 
-    const { data: matchLineups } = await supabase
+    const { data: lineups } = await supabase
       .from('match_lineups')
       .select('id, updated_at')
       .eq('match_id', matchId)
       .order('updated_at', { ascending: false });
 
-    const lineupIds = (matchLineups || []).map((lineup: any) => lineup.id);
+    const lineupIds = (lineups || []).map((l: any) => l.id as string);
 
     const [homeTeamResult, awayTeamResult] = await Promise.all([
       matchRow?.home_team_id
@@ -227,7 +232,6 @@ export function MatchInfoTab({
 
     let playerById: Record<string, { name: string; number: number | null }> = {};
     let latestPlayerUpdatedAt = '';
-    let playerCount = 0;
     if (lineupIds.length > 0) {
       const { data: lineupPlayers } = await supabase
         .from('match_lineup_players')
@@ -237,27 +241,27 @@ export function MatchInfoTab({
         .in('match_lineup_id', lineupIds)
         .order('updated_at', { ascending: false });
 
-      playerCount = (lineupPlayers || []).length;
       latestPlayerUpdatedAt = lineupPlayers?.[0]?.updated_at || '';
-
       (lineupPlayers || []).forEach((player: any) => {
         if (!player?.id) return;
         const number = Number.isFinite(player.team_player?.jersey_number)
           ? Number(player.team_player?.jersey_number)
           : null;
-        const name = player.team_player?.name || '';
-        playerById[player.id] = { name, number };
+        playerById[player.id] = {
+          name: player.team_player?.name || '',
+          number,
+        };
       });
     }
 
-    const latestLineupUpdatedAt = matchLineups?.[0]?.updated_at || '';
+    const lineupUpdated = lineups?.[0]?.updated_at || '';
     const signature = [
-      `lineups:${(matchLineups || []).length}`,
-      `lineups_updated:${latestLineupUpdatedAt}`,
-      `players:${playerCount}`,
+      `match:${matchRow?.updated_at || ''}`,
+      `home:${matchRow?.home_team_id || ''}`,
+      `away:${matchRow?.away_team_id || ''}`,
+      `lineups:${lineupIds.join(',')}`,
+      `lineups_updated:${lineupUpdated}`,
       `players_updated:${latestPlayerUpdatedAt}`,
-      `home_id:${matchRow?.home_team_id || ''}`,
-      `away_id:${matchRow?.away_team_id || ''}`,
     ].join('|');
 
     return {
@@ -273,22 +277,48 @@ export function MatchInfoTab({
       },
       playerById,
       signature,
+      lineupIds,
     };
-  }, [awayTeamName, homeTeamName, matchId, meta]);
+  }, [awayTeamName, homeTeamName, matchId, meta, supabase]);
 
-  const fetchMeta = useCallback(async () => {
-    if (!matchId) return;
-    const nextMeta = await buildMeta();
-    setMeta(nextMeta);
-  }, [buildMeta, matchId]);
+  const checkMetaSignatureLight = useCallback(async () => {
+    if (!matchId) return '';
 
-  const checkMetaChanges = useCallback(async () => {
-    if (!matchId) return;
-    const nextMeta = await buildMeta();
-    if (nextMeta.signature !== meta.signature) {
-      setMeta(nextMeta);
+    const { data: matchRow } = await supabase
+      .from('matches')
+      .select('home_team_id, away_team_id, updated_at')
+      .eq('id', matchId)
+      .single();
+
+    const { data: lineups } = await supabase
+      .from('match_lineups')
+      .select('id, updated_at')
+      .eq('match_id', matchId)
+      .order('updated_at', { ascending: false });
+
+    const lineupIds = (lineups || []).map((l: any) => l.id as string);
+    let latestPlayerUpdatedAt = '';
+    if (lineupIds.length > 0) {
+      const { data: latestPlayer } = await supabase
+        .from('match_lineup_players')
+        .select('updated_at')
+        .in('match_lineup_id', lineupIds)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      latestPlayerUpdatedAt = latestPlayer?.updated_at || '';
     }
-  }, [buildMeta, matchId, meta.signature]);
+
+    const lineupUpdated = lineups?.[0]?.updated_at || '';
+    return [
+      `match:${matchRow?.updated_at || ''}`,
+      `home:${matchRow?.home_team_id || ''}`,
+      `away:${matchRow?.away_team_id || ''}`,
+      `lineups:${lineupIds.join(',')}`,
+      `lineups_updated:${lineupUpdated}`,
+      `players_updated:${latestPlayerUpdatedAt}`,
+    ].join('|');
+  }, [matchId, supabase]);
 
   useEffect(() => {
     if (!matchId) {
@@ -298,24 +328,32 @@ export function MatchInfoTab({
 
     let cancelled = false;
     const init = async () => {
-      await Promise.all([fetchMeta(), fetchEvents()]);
-      if (!cancelled) setLoading(false);
+      const [nextMeta] = await Promise.all([fetchMetaFull(), fetchEvents()]);
+      if (cancelled) return;
+      metaSignatureRef.current = nextMeta.signature;
+      setMeta(nextMeta);
+      setLoading(false);
     };
     init();
 
-    const eventsPollingId = setInterval(() => {
+    const eventPollingId = setInterval(() => {
       fetchEvents();
-    }, 7000);
-    const metaPollingId = setInterval(() => {
-      checkMetaChanges();
-    }, 12000);
+    }, EVENT_POLL_MS);
+
+    const metaCheckId = setInterval(async () => {
+      const nextSignature = await checkMetaSignatureLight();
+      if (!nextSignature || nextSignature === metaSignatureRef.current) return;
+      const nextMeta = await fetchMetaFull();
+      metaSignatureRef.current = nextMeta.signature;
+      setMeta(nextMeta);
+    }, META_CHECK_MS);
 
     return () => {
       cancelled = true;
-      clearInterval(eventsPollingId);
-      clearInterval(metaPollingId);
+      clearInterval(eventPollingId);
+      clearInterval(metaCheckId);
     };
-  }, [checkMetaChanges, fetchEvents, fetchMeta, matchId]);
+  }, [checkMetaSignatureLight, fetchEvents, fetchMetaFull, matchId]);
 
   useEffect(() => {
     if (!homeTeamName && !awayTeamName) return;

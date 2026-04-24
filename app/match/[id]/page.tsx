@@ -1,7 +1,7 @@
 ﻿import Link from "next/link"
 import { notFound } from "next/navigation"
 import { ChevronLeft } from "lucide-react"
-import { createClient } from "@/lib/supabase/server"
+import { createClient } from "@supabase/supabase-js"
 import { ScoreHeader } from "@/components/match/score-header"
 import { VideoPlayer } from "@/components/match/video-player"
 import { MatchSseRefresher } from "@/components/match/match-sse-refresher"
@@ -31,7 +31,16 @@ export default async function MatchPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const supabase = await createClient()
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    }
+  )
 
   const { data: match, error } = await supabase
     .from("matches")
