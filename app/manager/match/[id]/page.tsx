@@ -39,6 +39,21 @@ import {
   getTimelineIconType,
   getTimelineLabel,
 } from '@/lib/match/manager-event-display';
+import {
+  computeScoreFromGoalEvents,
+  computeScoreFromTimelineEvents,
+  fetchEventsForStatusSync,
+  fetchGoalEventsForScoreSync,
+  fetchLineupIdsByMatchId,
+  fetchLineupPlayersForStatusSync,
+  fetchLineupPlayersWithTeamPlayer,
+  fetchLineupsByMatchId,
+  fetchMatchById,
+  fetchMatchEventsDesc,
+  fetchTeamNameById,
+  updateLineupPlayerStatusAndRole,
+  updateMatchScore,
+} from '@/lib/repositories/match-manager-repo';
 
 type EventType = 'goal' | 'yellow_card' | 'red_card' | 'substitution';
 
@@ -145,12 +160,7 @@ export default function MatchControlPage() {
   };
 
   const refreshEvents = useCallback(async () => {
-    const { data } = await supabase
-      .from('match_events')
-      .select('*')
-      .eq('match_id', matchId)
-      .order('sort_minute', { ascending: false })
-      .order('created_at', { ascending: false });
+    const { data } = await fetchMatchEventsDesc(supabase, matchId);
 
     const nextEvents = (data || []) as MatchEvent[];
     setEvents(nextEvents);
@@ -159,34 +169,24 @@ export default function MatchControlPage() {
   }, [matchId, supabase]);
 
   const syncMatchScoreFromEvents = useCallback(async () => {
-    const { data: goalEvents, error } = await supabase
-      .from('match_events')
-      .select('event_type, team_side')
-      .eq('match_id', matchId)
-      .in('event_type', ['goal', 'own_goal']);
+    const { data: goalEvents, error } = await fetchGoalEventsForScoreSync(
+      supabase,
+      matchId,
+    );
 
     if (error) {
       console.error('Error syncing match score from events:', error);
       return;
     }
 
-    let homeScore = 0;
-    let awayScore = 0;
-    (goalEvents || []).forEach((event: any) => {
-      if (event.event_type === 'goal') {
-        if (event.team_side === 'HOME') homeScore += 1;
-        if (event.team_side === 'AWAY') awayScore += 1;
-      }
-      if (event.event_type === 'own_goal') {
-        if (event.team_side === 'HOME') awayScore += 1;
-        if (event.team_side === 'AWAY') homeScore += 1;
-      }
-    });
+    const { homeScore, awayScore } = computeScoreFromGoalEvents(goalEvents || []);
 
-    const { error: updateError } = await supabase
-      .from('matches')
-      .update({ home_score: homeScore, away_score: awayScore })
-      .eq('id', matchId);
+    const { error: updateError } = await updateMatchScore(
+      supabase,
+      matchId,
+      homeScore,
+      awayScore,
+    );
 
     if (updateError) {
       console.error('Error updating match score:', updateError);
@@ -199,22 +199,17 @@ export default function MatchControlPage() {
   }, [matchId, supabase]);
 
   const refreshPlayersFromLineups = useCallback(async () => {
-    const { data: lineupData } = await supabase
-      .from('match_lineups')
-      .select('id, team_side')
-      .eq('match_id', matchId);
+    const { data: lineupData } = await fetchLineupsByMatchId(supabase, matchId);
 
     const homePlayers: Player[] = [];
     const awayPlayers: Player[] = [];
 
     if (lineupData?.length) {
       const lineupIds = lineupData.map((lineup: any) => lineup.id);
-      const { data: lineupPlayersData } = await supabase
-        .from('match_lineup_players')
-        .select(
-          'id, match_lineup_id, lineup_role, player_status, team_player:team_players!inner(name, jersey_number)',
-        )
-        .in('match_lineup_id', lineupIds);
+      const { data: lineupPlayersData } = await fetchLineupPlayersWithTeamPlayer(
+        supabase,
+        lineupIds,
+      );
 
       lineupPlayersData?.forEach((lp: any) => {
         const lineup = lineupData.find((l: any) => l.id === lp.match_lineup_id);
@@ -240,17 +235,12 @@ export default function MatchControlPage() {
   }, [matchId, supabase]);
 
   const syncLineupPlayerStatusesFromEvents = useCallback(async () => {
-    const { data: lineups } = await supabase
-      .from('match_lineups')
-      .select('id')
-      .eq('match_id', matchId);
+    const { data: lineups } = await fetchLineupIdsByMatchId(supabase, matchId);
     const lineupIds = (lineups || []).map((lineup: any) => lineup.id);
     if (lineupIds.length === 0) return { error: null };
 
-    const { data: lineupPlayers, error: lineupPlayersError } = await supabase
-      .from('match_lineup_players')
-      .select('id, lineup_role, player_status')
-      .in('match_lineup_id', lineupIds);
+    const { data: lineupPlayers, error: lineupPlayersError } =
+      await fetchLineupPlayersForStatusSync(supabase, lineupIds);
     if (lineupPlayersError) return { error: lineupPlayersError };
 
     const statusByPlayerId: Record<
@@ -265,12 +255,10 @@ export default function MatchControlPage() {
         | 'SUBSTITUTE';
     });
 
-    const { data: allEvents, error: eventsError } = await supabase
-      .from('match_events')
-      .select('event_type, player_id, sub_in_player_id, sub_out_player_id')
-      .eq('match_id', matchId)
-      .order('sort_minute', { ascending: true })
-      .order('created_at', { ascending: true });
+    const { data: allEvents, error: eventsError } = await fetchEventsForStatusSync(
+      supabase,
+      matchId,
+    );
     if (eventsError) return { error: eventsError };
 
     (allEvents || []).forEach((event: any) => {
@@ -306,10 +294,12 @@ export default function MatchControlPage() {
       ) {
         continue;
       }
-      const { error } = await supabase
-        .from('match_lineup_players')
-        .update({ player_status: nextStatus, lineup_role: nextRole })
-        .eq('id', player.id);
+      const { error } = await updateLineupPlayerStatusAndRole(
+        supabase,
+        player.id,
+        nextStatus,
+        nextRole,
+      );
       if (error) return { error };
     }
 
@@ -330,33 +320,22 @@ export default function MatchControlPage() {
 
     async function fetchData() {
       const [matchResult, eventsResult] = await Promise.all([
-        supabase.from('matches').select('*').eq('id', matchId).single(),
-        supabase
-          .from('match_events')
-          .select('*')
-          .eq('match_id', matchId)
-          .order('sort_minute', { ascending: false })
-          .order('created_at', { ascending: false }),
+        fetchMatchById(supabase, matchId),
+        fetchMatchEventsDesc(supabase, matchId),
       ]);
 
       if (matchResult.data) {
         setMatch(matchResult.data);
         setShowThumbnail(Boolean(matchResult.data.display_status));
         // Fetch team names
-        const homeTeamPromise = matchResult.data.home_team_id
-          ? supabase
-              .from('teams')
-              .select('name')
-              .eq('id', matchResult.data.home_team_id)
-              .single()
-          : Promise.resolve({ data: null });
-        const awayTeamPromise = matchResult.data.away_team_id
-          ? supabase
-              .from('teams')
-              .select('name')
-              .eq('id', matchResult.data.away_team_id)
-              .single()
-          : Promise.resolve({ data: null });
+        const homeTeamPromise = fetchTeamNameById(
+          supabase,
+          matchResult.data.home_team_id,
+        );
+        const awayTeamPromise = fetchTeamNameById(
+          supabase,
+          matchResult.data.away_team_id,
+        );
         const [homeTeamResult, awayTeamResult] = await Promise.all([
           homeTeamPromise,
           awayTeamPromise,
@@ -374,29 +353,14 @@ export default function MatchControlPage() {
         applyTimeStateFromEvents(nextEvents);
 
         if (matchResult.data) {
-          const homeGoals = nextEvents.filter(
-            (event) => event.event_type === 'goal' || event.event_type === 'own_goal',
-          ).reduce((acc, event) => {
-            if (event.event_type === 'goal' && event.team_side === 'HOME') return acc + 1;
-            if (event.event_type === 'own_goal' && event.team_side === 'AWAY') return acc + 1;
-            return acc;
-          }, 0);
-          const awayGoals = nextEvents.filter(
-            (event) => event.event_type === 'goal' || event.event_type === 'own_goal',
-          ).reduce((acc, event) => {
-            if (event.event_type === 'goal' && event.team_side === 'AWAY') return acc + 1;
-            if (event.event_type === 'own_goal' && event.team_side === 'HOME') return acc + 1;
-            return acc;
-          }, 0);
+          const { home: homeGoals, away: awayGoals } =
+            computeScoreFromTimelineEvents(nextEvents);
 
           if (
             homeGoals !== matchResult.data.home_score ||
             awayGoals !== matchResult.data.away_score
           ) {
-            await supabase
-              .from('matches')
-              .update({ home_score: homeGoals, away_score: awayGoals })
-              .eq('id', matchId);
+            await updateMatchScore(supabase, matchId, homeGoals, awayGoals);
             setMatch((prev) =>
               prev
                 ? { ...prev, home_score: homeGoals, away_score: awayGoals }
