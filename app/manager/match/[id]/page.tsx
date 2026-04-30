@@ -31,6 +31,14 @@ import {
 } from 'lucide-react';
 import type { Match, MatchEvent, Lineup } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
+import {
+  deriveMatchTimesFromEvents,
+  TIME_TYPE_TO_TIME_EVENT,
+} from '@/lib/match/manager-match-time';
+import {
+  getTimelineIconType,
+  getTimelineLabel,
+} from '@/lib/match/manager-event-display';
 
 type EventType = 'goal' | 'yellow_card' | 'red_card' | 'substitution';
 
@@ -75,32 +83,6 @@ interface PenaltyKick {
   team: 'first' | 'second';
   result: 'success' | 'fail' | null;
 }
-
-type TimeEventType =
-  | 'half_start'
-  | 'half_end'
-  | 'second_half_start'
-  | 'second_half_end'
-  | 'extra_time_start'
-  | 'extra_time_end';
-
-const TIME_EVENT_TO_TIME_TYPE: Record<TimeEventType, TimeType> = {
-  half_start: 'first_half_start',
-  half_end: 'first_half_end',
-  second_half_start: 'second_half_start',
-  second_half_end: 'second_half_end',
-  extra_time_start: 'extra_start',
-  extra_time_end: 'extra_end',
-};
-
-const TIME_TYPE_TO_TIME_EVENT: Record<TimeType, TimeEventType> = {
-  first_half_start: 'half_start',
-  first_half_end: 'half_end',
-  second_half_start: 'second_half_start',
-  second_half_end: 'second_half_end',
-  extra_start: 'extra_time_start',
-  extra_end: 'extra_time_end',
-};
 
 export default function MatchControlPage() {
   const { user, isLoading } = useAuth();
@@ -155,26 +137,10 @@ export default function MatchControlPage() {
   >('first');
   const [clockTick, setClockTick] = useState(0);
 
-  const isTimeEventType = (eventType: string): eventType is TimeEventType => {
-    return eventType in TIME_EVENT_TO_TIME_TYPE;
-  };
-
   const applyTimeStateFromEvents = (eventRows: MatchEvent[]) => {
-    const nextTimes: MatchTimes = { ...EMPTY_MATCH_TIMES };
-    let latestTimeEvent: { type: TimeType; eventId: string } | null = null;
-    const sortedEvents = [...eventRows].sort(
-      (a, b) =>
-        new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-    );
-
-    sortedEvents.forEach((event) => {
-      if (!isTimeEventType(event.event_type)) return;
-      const mappedType = TIME_EVENT_TO_TIME_TYPE[event.event_type];
-      nextTimes[mappedType] = event.created_at;
-      latestTimeEvent = { type: mappedType, eventId: event.id };
-    });
-
-    setMatchTimes(nextTimes);
+    const { times, lastTimeRecord: latestTimeEvent } =
+      deriveMatchTimesFromEvents(eventRows);
+    setMatchTimes(times);
     setLastTimeRecord(latestTimeEvent);
   };
 
