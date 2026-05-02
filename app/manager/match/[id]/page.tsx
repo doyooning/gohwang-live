@@ -31,6 +31,10 @@ import {
 } from 'lucide-react';
 import type { Match, MatchEvent, Lineup } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
+import {
+  useEventFormState,
+  type EventType,
+} from '@/hooks/use-event-form-state';
 import { EventInputPanel } from '@/components/manager/match/event-input-panel';
 import { EventTimeline } from '@/components/manager/match/event-timeline';
 import {
@@ -56,8 +60,6 @@ import {
   updateLineupPlayerStatusAndRole,
   updateMatchScore,
 } from '@/lib/repositories/match-manager-repo';
-
-type EventType = 'goal' | 'yellow_card' | 'red_card' | 'substitution';
 
 interface Player {
   id: string;
@@ -123,16 +125,29 @@ export default function MatchControlPage() {
   const { toast } = useToast();
 
   // Input panel state
-  const [activePanel, setActivePanel] = useState<EventType | null>(null);
-  const [selectedTeam, setSelectedTeam] = useState<'home' | 'away' | ''>('');
-  const [selectedPlayer, setSelectedPlayer] = useState('');
-  const [selectedPlayerOut, setSelectedPlayerOut] = useState('');
-  const [selectedAssistPlayer, setSelectedAssistPlayer] = useState('');
-  const [cardType, setCardType] = useState<'yellow_card' | 'red_card'>(
-    'yellow_card',
-  );
-  const [inputMinute, setInputMinute] = useState('');
-  const [isOwnGoal, setIsOwnGoal] = useState(false);
+  const eventForm = useEventFormState();
+  const { state: eventFormState, actions: eventFormActions } = eventForm;
+  const {
+    activePanel,
+    selectedTeam,
+    selectedPlayer,
+    selectedPlayerOut,
+    selectedAssistPlayer,
+    cardType,
+    inputMinute,
+    isOwnGoal,
+  } = eventFormState;
+  const {
+    setActivePanel,
+    setSelectedTeam,
+    setSelectedPlayer,
+    setSelectedPlayerOut,
+    setSelectedAssistPlayer,
+    setCardType,
+    setInputMinute,
+    setIsOwnGoal,
+    reset: resetEventForm,
+  } = eventFormActions;
 
   // Time section state
   const [showTimePanel, setShowTimePanel] = useState(false);
@@ -584,14 +599,7 @@ export default function MatchControlPage() {
   );
 
   const resetForm = () => {
-    setSelectedTeam('');
-    setSelectedPlayer('');
-    setSelectedPlayerOut('');
-    setSelectedAssistPlayer('');
-    setCardType('yellow_card');
-    setInputMinute('');
-    setIsOwnGoal(false);
-    setActivePanel(null);
+    resetEventForm();
   };
 
   const handleSaveEvent = async () => {
