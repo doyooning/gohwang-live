@@ -31,6 +31,8 @@ import {
 } from 'lucide-react';
 import type { Match, MatchEvent, Lineup } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
+import { EventInputPanel } from '@/components/manager/match/event-input-panel';
+import { EventTimeline } from '@/components/manager/match/event-timeline';
 import {
   deriveMatchTimesFromEvents,
   TIME_TYPE_TO_TIME_EVENT,
@@ -1836,8 +1838,44 @@ export default function MatchControlPage() {
         </div>
       )}
 
-      {/* Input Panel */}
-      {activePanel && (
+      <EventInputPanel
+        activePanel={activePanel}
+        teamNames={teamNames}
+        selectedTeam={selectedTeam}
+        selectedPlayer={selectedPlayer}
+        selectedPlayerOut={selectedPlayerOut}
+        selectedAssistPlayer={selectedAssistPlayer}
+        cardType={cardType}
+        inputMinute={inputMinute}
+        isOwnGoal={isOwnGoal}
+        onReset={resetForm}
+        onSelectTeam={(team) => {
+          setSelectedTeam(team);
+          setSelectedPlayer('');
+          setSelectedPlayerOut('');
+          setSelectedAssistPlayer('');
+        }}
+        onSelectPlayer={setSelectedPlayer}
+        onSelectPlayerOut={setSelectedPlayerOut}
+        onSelectAssistPlayer={setSelectedAssistPlayer}
+        onSetCardType={setCardType}
+        onSetInputMinute={setInputMinute}
+        onSetOwnGoal={setIsOwnGoal}
+        onSave={handleSaveEvent}
+        getStarterPlayers={(team) => getPlayersByRole(team, 'STARTER')}
+        getSubstitutionInCandidates={getSubstitutionInCandidates}
+        getSubstitutionOutCandidates={getSubstitutionOutCandidates}
+      />
+
+      <EventTimeline
+        events={events}
+        teamNames={teamNames}
+        getEventIcon={getEventIcon}
+        getEventLabel={getEventLabel}
+        onUndoLatestEvent={handleUndoLatestEvent}
+      />
+
+      {false && activePanel && (
         <div className="px-4 py-4 bg-card border-b border-border">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-foreground">
@@ -2026,7 +2064,7 @@ export default function MatchControlPage() {
       )}
 
       {/* Event Timeline */}
-      <main className="flex-1 px-4 py-4">
+      {false && <main className="flex-1 px-4 py-4">
         {events.length > 0 && (
           <div className="flex justify-end mb-2">
             <Button variant="outline" size="sm" onClick={handleUndoLatestEvent}>
@@ -2075,7 +2113,7 @@ export default function MatchControlPage() {
             ))}
           </div>
         )}
-      </main>
+      </main>}
     </div>
   );
 }
