@@ -196,7 +196,9 @@ export default function MatchControlPage() {
       return;
     }
 
-    const { homeScore, awayScore } = computeScoreFromGoalEvents(goalEvents || []);
+    const { homeScore, awayScore } = computeScoreFromGoalEvents(
+      goalEvents || [],
+    );
 
     const { error: updateError } = await updateMatchScore(
       supabase,
@@ -223,10 +225,8 @@ export default function MatchControlPage() {
 
     if (lineupData?.length) {
       const lineupIds = lineupData.map((lineup: any) => lineup.id);
-      const { data: lineupPlayersData } = await fetchLineupPlayersWithTeamPlayer(
-        supabase,
-        lineupIds,
-      );
+      const { data: lineupPlayersData } =
+        await fetchLineupPlayersWithTeamPlayer(supabase, lineupIds);
 
       lineupPlayersData?.forEach((lp: any) => {
         const lineup = lineupData.find((l: any) => l.id === lp.match_lineup_id);
@@ -272,14 +272,16 @@ export default function MatchControlPage() {
         | 'SUBSTITUTE';
     });
 
-    const { data: allEvents, error: eventsError } = await fetchEventsForStatusSync(
-      supabase,
-      matchId,
-    );
+    const { data: allEvents, error: eventsError } =
+      await fetchEventsForStatusSync(supabase, matchId);
     if (eventsError) return { error: eventsError };
 
     (allEvents || []).forEach((event: any) => {
-      if (event.event_type === 'red_card' && event.player_id && statusByPlayerId[event.player_id]) {
+      if (
+        event.event_type === 'red_card' &&
+        event.player_id &&
+        statusByPlayerId[event.player_id]
+      ) {
         statusByPlayerId[event.player_id] = 'sent_off';
       }
       if (event.event_type === 'substitution') {
@@ -490,8 +492,10 @@ export default function MatchControlPage() {
 
   const getCurrentPeriod = (): MatchPeriod => {
     if (matchTimes.extra_start && !matchTimes.extra_end) return '연장';
-    if (matchTimes.second_half_start && !matchTimes.second_half_end) return '후반';
-    if (matchTimes.first_half_start && !matchTimes.first_half_end) return '전반';
+    if (matchTimes.second_half_start && !matchTimes.second_half_end)
+      return '후반';
+    if (matchTimes.first_half_start && !matchTimes.first_half_end)
+      return '전반';
     if (matchTimes.extra_end) return '연장';
     if (matchTimes.second_half_end) return '후반';
     if (matchTimes.first_half_end) return '전반';
@@ -504,7 +508,8 @@ export default function MatchControlPage() {
       if (extraEndDate)
         return getElapsedMinutes(matchTimes.extra_start, extraEndDate);
     }
-    if (matchTimes.extra_start) return getElapsedMinutes(matchTimes.extra_start);
+    if (matchTimes.extra_start)
+      return getElapsedMinutes(matchTimes.extra_start);
     if (matchTimes.second_half_end && matchTimes.second_half_start) {
       const secondEndDate = parseIsoTime(matchTimes.second_half_end);
       if (secondEndDate)
@@ -517,7 +522,8 @@ export default function MatchControlPage() {
       if (firstEndDate)
         return getElapsedMinutes(matchTimes.first_half_start, firstEndDate);
     }
-    if (matchTimes.first_half_start) return getElapsedMinutes(matchTimes.first_half_start);
+    if (matchTimes.first_half_start)
+      return getElapsedMinutes(matchTimes.first_half_start);
     return 0;
   };
 
@@ -535,7 +541,10 @@ export default function MatchControlPage() {
     if (matchTimes.extra_end && matchTimes.extra_start) {
       const extraEndDate = parseIsoTime(matchTimes.extra_end);
       if (extraEndDate) {
-        const displayMinute = getElapsedMinutes(matchTimes.extra_start, extraEndDate);
+        const displayMinute = getElapsedMinutes(
+          matchTimes.extra_start,
+          extraEndDate,
+        );
         return {
           period: '연장' as MatchPeriod,
           displayMinute,
@@ -600,6 +609,16 @@ export default function MatchControlPage() {
 
   const resetForm = () => {
     resetEventForm();
+  };
+
+  const openEventPanel = (panel: EventType | null) => {
+    resetForm();
+    setActivePanel(panel);
+    if (panel) {
+      setInputMinute(String(getCurrentDisplayMinute()));
+    }
+    setShowTimePanel(false);
+    setShowPenaltyPanel(false);
   };
 
   const handleSaveEvent = async () => {
@@ -741,7 +760,8 @@ export default function MatchControlPage() {
       return;
     }
 
-    const { error: statusSyncError } = await syncLineupPlayerStatusesFromEvents();
+    const { error: statusSyncError } =
+      await syncLineupPlayerStatusesFromEvents();
     if (statusSyncError) {
       console.error('Error syncing lineup player statuses:', statusSyncError);
       if (insertedEvent?.id) {
@@ -831,7 +851,10 @@ export default function MatchControlPage() {
       return;
     }
 
-    if (timeType === 'first_half_start' && match?.status?.toLowerCase() !== 'live') {
+    if (
+      timeType === 'first_half_start' &&
+      match?.status?.toLowerCase() !== 'live'
+    ) {
       toast({
         title: '경기 시작 필요',
         description: '전반 시작 전에 먼저 경기 시작 버튼을 눌러주세요.',
@@ -993,7 +1016,8 @@ export default function MatchControlPage() {
       return;
     }
     await refreshEvents();
-    const { error: statusSyncError } = await syncLineupPlayerStatusesFromEvents();
+    const { error: statusSyncError } =
+      await syncLineupPlayerStatusesFromEvents();
     if (statusSyncError) {
       console.error('Error syncing lineup player statuses:', statusSyncError);
       toast({
@@ -1321,10 +1345,12 @@ export default function MatchControlPage() {
   const secondTeamName =
     penaltyFirstTeam === 'home' ? teamNames.away : teamNames.home;
   const shootoutHomeScore = events.filter(
-    (event) => event.event_type === 'shootout_goal' && event.team_side === 'HOME',
+    (event) =>
+      event.event_type === 'shootout_goal' && event.team_side === 'HOME',
   ).length;
   const shootoutAwayScore = events.filter(
-    (event) => event.event_type === 'shootout_goal' && event.team_side === 'AWAY',
+    (event) =>
+      event.event_type === 'shootout_goal' && event.team_side === 'AWAY',
   ).length;
   const hasShootoutResult = shootoutHomeScore + shootoutAwayScore > 0;
 
@@ -1413,12 +1439,11 @@ export default function MatchControlPage() {
               <p className="text-3xl font-bold text-foreground">
                 {match.home_score} : {match.away_score}
               </p>
-              {match.status.toLowerCase() === 'ended' &&
-                hasShootoutResult && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    PSO {shootoutHomeScore}-{shootoutAwayScore}
-                  </p>
-                )}
+              {match.status.toLowerCase() === 'ended' && hasShootoutResult && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  PSO {shootoutHomeScore}-{shootoutAwayScore}
+                </p>
+              )}
               {match.status.toLowerCase() === 'live' && (
                 <div className="flex items-center justify-center gap-1 text-primary text-sm font-medium mt-1">
                   <Clock className="size-3" />
@@ -1483,13 +1508,7 @@ export default function MatchControlPage() {
             className="h-14 flex-col gap-1"
             onClick={() => {
               const nextPanel = activePanel === 'goal' ? null : 'goal';
-              resetForm();
-              setActivePanel(nextPanel);
-              if (nextPanel) {
-                setInputMinute(String(getCurrentDisplayMinute()));
-              }
-              setShowTimePanel(false);
-              setShowPenaltyPanel(false);
+              openEventPanel(nextPanel);
             }}
           >
             <Goal className="size-5" />
@@ -1508,13 +1527,7 @@ export default function MatchControlPage() {
                 activePanel === 'yellow_card' || activePanel === 'red_card'
                   ? null
                   : 'yellow_card';
-              resetForm();
-              setActivePanel(nextPanel);
-              if (nextPanel) {
-                setInputMinute(String(getCurrentDisplayMinute()));
-              }
-              setShowTimePanel(false);
-              setShowPenaltyPanel(false);
+              openEventPanel(nextPanel);
             }}
           >
             <Square className="size-5" />
@@ -1527,13 +1540,7 @@ export default function MatchControlPage() {
             onClick={() => {
               const nextPanel =
                 activePanel === 'substitution' ? null : 'substitution';
-              resetForm();
-              setActivePanel(nextPanel);
-              if (nextPanel) {
-                setInputMinute(String(getCurrentDisplayMinute()));
-              }
-              setShowTimePanel(false);
-              setShowPenaltyPanel(false);
+              openEventPanel(nextPanel);
             }}
           >
             <RefreshCw className="size-5" />
@@ -1563,7 +1570,8 @@ export default function MatchControlPage() {
               if (!matchTimes.second_half_end) {
                 toast({
                   title: '승부차기 기록 불가',
-                  description: '후반 종료 이후부터 승부차기를 기록할 수 있습니다.',
+                  description:
+                    '후반 종료 이후부터 승부차기를 기록할 수 있습니다.',
                   variant: 'destructive',
                 });
                 return;
@@ -1900,7 +1908,9 @@ export default function MatchControlPage() {
           <div className="space-y-3">
             {activePanel === 'goal' && (
               <div className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2">
-                <span className="text-sm font-medium text-foreground">자책골</span>
+                <span className="text-sm font-medium text-foreground">
+                  자책골
+                </span>
                 <Switch
                   checked={isOwnGoal}
                   onCheckedChange={(checked) => {
@@ -1981,7 +1991,9 @@ export default function MatchControlPage() {
                   </SelectTrigger>
                   <SelectContent>
                     {(activePanel === 'substitution'
-                      ? getSubstitutionInCandidates(selectedTeam as 'home' | 'away')
+                      ? getSubstitutionInCandidates(
+                          selectedTeam as 'home' | 'away',
+                        )
                       : getPlayersByRole(
                           selectedTeam as 'home' | 'away',
                           'STARTER',
@@ -2029,7 +2041,9 @@ export default function MatchControlPage() {
                       <SelectValue placeholder="교체 OUT 선수 선택" />
                     </SelectTrigger>
                     <SelectContent>
-                      {getSubstitutionOutCandidates(selectedTeam as 'home' | 'away')
+                      {getSubstitutionOutCandidates(
+                        selectedTeam as 'home' | 'away',
+                      )
                         .filter((p) => p.id !== selectedPlayer)
                         .map((player) => (
                           <SelectItem key={player.id} value={player.id}>
@@ -2072,56 +2086,62 @@ export default function MatchControlPage() {
       )}
 
       {/* Event Timeline */}
-      {false && <main className="flex-1 px-4 py-4">
-        {events.length > 0 && (
-          <div className="flex justify-end mb-2">
-            <Button variant="outline" size="sm" onClick={handleUndoLatestEvent}>
-              <Undo2 className="size-4 mr-1" />
-              되돌리기
-            </Button>
-          </div>
-        )}
-        <h3 className="text-sm font-semibold text-muted-foreground mb-3">
-          이벤트 타임라인
-        </h3>
-        {events.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            아직 기록된 이벤트가 없습니다
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {events.map((event, index) => (
-              <div
-                key={
-                  event.id ||
-                  `${event.created_at}-${event.event_type}-${event.player_id || 'none'}-${index}`
-                }
-                className="flex items-center gap-3 bg-card border border-border rounded-lg p-3"
+      {false && (
+        <main className="flex-1 px-4 py-4">
+          {events.length > 0 && (
+            <div className="flex justify-end mb-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleUndoLatestEvent}
               >
-                <div className="flex items-center justify-center size-8 rounded-full bg-secondary">
-                  {getEventIcon(event.event_type)}
+                <Undo2 className="size-4 mr-1" />
+                되돌리기
+              </Button>
+            </div>
+          )}
+          <h3 className="text-sm font-semibold text-muted-foreground mb-3">
+            이벤트 타임라인
+          </h3>
+          {events.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              아직 기록된 이벤트가 없습니다
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {events.map((event, index) => (
+                <div
+                  key={
+                    event.id ||
+                    `${event.created_at}-${event.event_type}-${event.player_id || 'none'}-${index}`
+                  }
+                  className="flex items-center gap-3 bg-card border border-border rounded-lg p-3"
+                >
+                  <div className="flex items-center justify-center size-8 rounded-full bg-secondary">
+                    {getEventIcon(event.event_type)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">
+                      {getEventLabel(event)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {event.team_side === 'HOME'
+                        ? teamNames.home
+                        : event.team_side === 'AWAY'
+                          ? teamNames.away
+                          : '-'}
+                    </p>
+                  </div>
+                  <div className="text-sm font-medium text-primary">
+                    {event.period ? `${event.period} ` : ''}
+                    {event.display_minute ?? event.sort_minute ?? 0}&apos;
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">
-                    {getEventLabel(event)}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {event.team_side === 'HOME'
-                      ? teamNames.home
-                      : event.team_side === 'AWAY'
-                        ? teamNames.away
-                        : '-'}
-                  </p>
-                </div>
-                <div className="text-sm font-medium text-primary">
-                  {event.period ? `${event.period} ` : ''}
-                  {event.display_minute ?? event.sort_minute ?? 0}&apos;
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </main>}
+              ))}
+            </div>
+          )}
+        </main>
+      )}
     </div>
   );
 }
